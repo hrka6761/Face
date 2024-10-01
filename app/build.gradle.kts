@@ -81,4 +81,7 @@ dependencies {
     // Navigation
     implementation(libs.navigation.compose)
     implementation(libs.compose.ui)
+
+    // Constraintlayout
+    implementation(libs.constraintlayout.compose)
 }

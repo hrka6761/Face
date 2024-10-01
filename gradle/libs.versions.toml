@@ -12,6 +12,7 @@ hiltAndroid = "2.51.1"
 kotlinxCoroutinesAndroid = "1.8.0"
 composeNavigation = "2.4.0-alpha10"
 composeUi = "1.7.2"
+constraintlayoutComposeVersion = "1.0.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -33,6 +34,7 @@ hilt-android-compiler = { module = "com.google.dagger:hilt-android-compiler", ve
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "kotlinxCoroutinesAndroid" }
 navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "composeNavigation" }
 compose-ui = { module = "androidx.compose.ui:ui", version.ref = "composeUi" }
+constraintlayout-compose = { module = "androidx.constraintlayout:constraintlayout-compose", version.ref = "constraintlayoutComposeVersion" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
