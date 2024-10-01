@@ -74,4 +74,7 @@ dependencies {
 
     // Hilt
     implementation(libs.hilt.android)
+
+    // Coroutines
+    implementation(libs.kotlinx.coroutines.android)
 }
