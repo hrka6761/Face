@@ -1,4 +1,4 @@
-package ir.hrka.face.ui.screens
+package ir.hrka.face.presentation.ui.screens
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview

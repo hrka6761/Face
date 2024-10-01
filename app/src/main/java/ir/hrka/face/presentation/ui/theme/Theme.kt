@@ -1,4 +1,4 @@
-package ir.hrka.face.ui.theme
+package ir.hrka.face.presentation.ui.theme
 
 import android.app.Activity
 import android.os.Build

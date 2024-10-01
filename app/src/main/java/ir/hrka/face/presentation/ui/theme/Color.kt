@@ -1,4 +1,4 @@
-package ir.hrka.face.ui.theme
+package ir.hrka.face.presentation.ui.theme
 
 import androidx.compose.ui.graphics.Color
 

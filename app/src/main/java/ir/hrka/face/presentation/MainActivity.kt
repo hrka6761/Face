@@ -1,4 +1,4 @@
-package ir.hrka.face
+package ir.hrka.face.presentation
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
