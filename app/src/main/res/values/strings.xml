@@ -1,3 +1,7 @@
 <resources>
     <string name="app_name">Face</string>
+    <string name="splash_screen_permission_dialog_allow_text_button">Allow</string>
+    <string name="splash_screen_permission_dialog_deny_text_button">Deny</string>
+    <string name="splash_screen_permission_dialog_title_text">Camera permission</string>
+    <string name="splash_screen_permission_dialog_description_text">The following permissions are required to use the app.%1$s</string>
 </resources>

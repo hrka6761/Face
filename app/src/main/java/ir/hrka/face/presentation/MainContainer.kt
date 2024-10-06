@@ -18,7 +18,7 @@ import ir.hrka.face.presentation.ui.theme.FaceTheme
 @Composable
 fun AppContent() {
     val navHostController = rememberNavController()
-    val activity = (LocalContext.current as Activity)
+    val activity = (LocalContext.current as MainActivity)
 
     FaceTheme {
         NavHost(
@@ -27,7 +27,7 @@ fun AppContent() {
             startDestination = Splash()
         ) {
             composable(route = Splash()) {
-                SplashScreen(navHostController)
+                SplashScreen(activity, navHostController)
             }
             composable(route = Main()) {
                 MainScreen(navHostController)
