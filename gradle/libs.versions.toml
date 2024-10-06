@@ -13,6 +13,7 @@ kotlinxCoroutinesAndroid = "1.8.0"
 composeNavigation = "2.4.0-alpha10"
 composeUi = "1.7.2"
 constraintlayoutComposeVersion = "1.0.1"
+hiltNavigationCompose = "1.2.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -35,6 +36,7 @@ kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutine
 navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "composeNavigation" }
 compose-ui = { module = "androidx.compose.ui:ui", version.ref = "composeUi" }
 constraintlayout-compose = { module = "androidx.constraintlayout:constraintlayout-compose", version.ref = "constraintlayoutComposeVersion" }
+androidx-hilt-navigation-compose = { module = "androidx.hilt:hilt-navigation-compose", version.ref = "hiltNavigationCompose" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
