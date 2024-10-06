@@ -1,17 +1,17 @@
-package ir.hrka.face.presentation.ui.screens
+package ir.hrka.face.presentation.ui.screens.main
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.navigation.NavHostController
 
 @Composable
-fun SplashScreen(navHostController: NavHostController) {
+fun MainScreen(navHostController: NavHostController) {
 
 }
 
 
 @Preview(showBackground = true)
 @Composable
-fun SplashScreenPreview() {
+fun MainScreenPreview() {
 
 }

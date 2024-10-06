@@ -10,7 +10,9 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import ir.hrka.face.core.utilities.Screen.Splash
-import ir.hrka.face.presentation.ui.screens.SplashScreen
+import ir.hrka.face.core.utilities.Screen.Main
+import ir.hrka.face.presentation.ui.screens.main.MainScreen
+import ir.hrka.face.presentation.ui.screens.splash.SplashScreen
 import ir.hrka.face.presentation.ui.theme.FaceTheme
 
 @Composable
@@ -26,6 +28,9 @@ fun AppContent() {
         ) {
             composable(route = Splash()) {
                 SplashScreen(navHostController)
+            }
+            composable(route = Main()) {
+                MainScreen(navHostController)
             }
         }
     }
