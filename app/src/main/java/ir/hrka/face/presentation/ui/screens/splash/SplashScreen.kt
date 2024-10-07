@@ -1,6 +1,5 @@
 package ir.hrka.face.presentation.ui.screens.splash
 
-import android.Manifest.permission.CAMERA
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions
@@ -11,9 +10,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -33,12 +33,13 @@ import ir.hrka.face.R
 import ir.hrka.face.core.utilities.Constants.TAG
 import ir.hrka.face.core.utilities.Screen.Main
 import ir.hrka.face.presentation.MainActivity
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 @Composable
 fun SplashScreen(activity: MainActivity, navHostController: NavHostController) {
 
-    val requiredPermissions = arrayOf(CAMERA)
     val viewModel: SplashViewModel = hiltViewModel()
     val permissionState by viewModel.permissionState.collectAsState()
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -58,14 +59,14 @@ fun SplashScreen(activity: MainActivity, navHostController: NavHostController) {
                 .height(50.dp)
         )
 
-        if (!viewModel.hasAllPermissions(requiredPermissions))
+        if (!viewModel.hasAllPermissions())
             AlertDialog(
                 modifier = Modifier.fillMaxWidth(),
                 onDismissRequest = {},
                 confirmButton = {
                     TextButton(
                         onClick = {
-                            permissionLauncher.launch(requiredPermissions)
+                            permissionLauncher.launch(viewModel.requiredPermissions)
                         }
                     ) { Text(text = stringResource(R.string.splash_screen_permission_dialog_allow_text_button)) }
                 },
@@ -76,35 +77,29 @@ fun SplashScreen(activity: MainActivity, navHostController: NavHostController) {
                         }
                     ) { Text(text = stringResource(R.string.splash_screen_permission_dialog_deny_text_button)) }
                 },
-                icon = { Icons.Default.Notifications },
+                icon = { Icon(Icons.Filled.Info, contentDescription = null) },
                 title = { Text(stringResource(R.string.splash_screen_permission_dialog_title_text)) },
                 text = {
                     Text(
                         stringResource(
                             R.string.splash_screen_permission_dialog_description_text,
-                            viewModel.getListOfDeniedPermissions(requiredPermissions)
+                            viewModel.getListOfDeniedPermissions()
                         )
                     )
                 },
                 shape = RoundedCornerShape(16.dp),
-                tonalElevation = 10.dp
+                tonalElevation = 16.dp
             )
-        else {
-            LaunchedEffect(Unit) {
-                delay(1000)
-                navHostController.navigate(Main())
-            }
-        }
     }
 
     LaunchedEffect(permissionState) {
-        requiredPermissions.forEach { permission ->
-            if (permissionState[permission] != true)
-                return@LaunchedEffect
-        }
+        if (!viewModel.hasAllPermissions())
+            return@LaunchedEffect
 
         delay(1000)
-        navHostController.navigate(Main())
+        withContext(Dispatchers.Main) {
+            navHostController.navigate(Main())
+        }
     }
 }
 

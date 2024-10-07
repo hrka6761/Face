@@ -16,26 +16,36 @@ class SplashViewModel @Inject constructor(
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
-    private val _permissionState: MutableStateFlow<Map<String, Boolean?>> = MutableStateFlow(mapOf(Pair(CAMERA, null)))
+    val requiredPermissions = arrayOf(CAMERA)
+    private val _permissionState: MutableStateFlow<Map<String, Boolean?>> =
+        MutableStateFlow(initPermissionState())
     val permissionState: StateFlow<Map<String, Boolean?>> = _permissionState
 
 
-    fun hasAllPermissions(permissions: Array<String>): Boolean {
+    fun hasAllPermissions(): Boolean {
 
-        permissions.forEach { permission ->
-            if (ContextCompat.checkSelfPermission(context, permission) != PackageManager.PERMISSION_GRANTED)
+        requiredPermissions.forEach { permission ->
+            if (ContextCompat.checkSelfPermission(
+                    context,
+                    permission
+                ) != PackageManager.PERMISSION_GRANTED
+            )
                 return false
         }
 
         return true
     }
 
-    fun getListOfDeniedPermissions(permissions: Array<String>) : String {
+    fun getListOfDeniedPermissions(): String {
 
         return buildString {
             append("\n")
-            permissions.forEach { permission ->
-                if (ContextCompat.checkSelfPermission(context, permission) != PackageManager.PERMISSION_GRANTED)
+            requiredPermissions.forEach { permission ->
+                if (ContextCompat.checkSelfPermission(
+                        context,
+                        permission
+                    ) != PackageManager.PERMISSION_GRANTED
+                )
                     append("\n* " + permission.split(".").last())
             }
         }
@@ -44,5 +54,16 @@ class SplashViewModel @Inject constructor(
     fun setPermissionState(state: Map<String, Boolean>) {
 
         _permissionState.value = state
+    }
+
+
+    private fun initPermissionState(): Map<String, Boolean?> {
+        val state = mutableMapOf<String, Boolean?>()
+
+        requiredPermissions.forEach { permission ->
+            state[permission] = null
+        }
+
+        return state
     }
 }
