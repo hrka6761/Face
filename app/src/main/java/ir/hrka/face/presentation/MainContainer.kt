@@ -1,6 +1,5 @@
 package ir.hrka.face.presentation
 
-import android.app.Activity
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -10,8 +9,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import ir.hrka.face.core.utilities.Screen.Splash
-import ir.hrka.face.core.utilities.Screen.Main
-import ir.hrka.face.presentation.ui.screens.main.MainScreen
+import ir.hrka.face.core.utilities.Screen.Home
+import ir.hrka.face.presentation.ui.screens.home.HomeScreen
 import ir.hrka.face.presentation.ui.screens.splash.SplashScreen
 import ir.hrka.face.presentation.ui.theme.FaceTheme
 
@@ -29,8 +28,8 @@ fun AppContent() {
             composable(route = Splash()) {
                 SplashScreen(activity, navHostController)
             }
-            composable(route = Main()) {
-                MainScreen(navHostController)
+            composable(route = Home()) {
+                HomeScreen(navHostController)
             }
         }
     }

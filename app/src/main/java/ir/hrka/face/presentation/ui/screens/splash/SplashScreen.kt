@@ -30,7 +30,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
 import ir.hrka.face.R
 import ir.hrka.face.core.utilities.Constants.TAG
-import ir.hrka.face.core.utilities.Screen.Main
+import ir.hrka.face.core.utilities.Screen.Home
 import ir.hrka.face.presentation.MainActivity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -97,7 +97,7 @@ fun SplashScreen(activity: MainActivity, navHostController: NavHostController) {
 
         delay(1000)
         withContext(Dispatchers.Main) {
-            navHostController.navigate(Main())
+            navHostController.navigate(Home())
         }
     }
 }

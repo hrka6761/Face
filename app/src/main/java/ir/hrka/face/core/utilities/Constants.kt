@@ -4,5 +4,5 @@ object Constants {
 
     const val TAG = "faceProject"
     const val SPLASH_SCREEN = "splash"
-    const val MAIN_SCREEN = "main"
+    const val HOME_SCREEN = "home"
 }
