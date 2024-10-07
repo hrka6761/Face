@@ -86,4 +86,7 @@ dependencies {
 
     // Constraintlayout
     implementation(libs.constraintlayout.compose)
+
+    // Face detection
+    implementation(libs.face.detection)
 }
