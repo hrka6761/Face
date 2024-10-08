@@ -4,4 +4,5 @@
     <string name="splash_screen_permission_dialog_deny_text_button">Deny</string>
     <string name="splash_screen_permission_dialog_title_text">Camera permission</string>
     <string name="splash_screen_permission_dialog_description_text">The following permissions are required to use the app.%1$s</string>
+    <string name="home_view_model_toggle_flash_light_in_front_camera_msg_error">The front camera cannot access the flash light.</string>
 </resources>

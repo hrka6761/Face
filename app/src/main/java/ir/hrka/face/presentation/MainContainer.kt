@@ -29,7 +29,7 @@ fun AppContent() {
                 SplashScreen(activity, navHostController)
             }
             composable(route = Home()) {
-                HomeScreen(navHostController)
+                HomeScreen(activity, navHostController)
             }
         }
     }
