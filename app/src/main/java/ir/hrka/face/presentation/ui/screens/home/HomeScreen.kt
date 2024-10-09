@@ -1,6 +1,6 @@
 package ir.hrka.face.presentation.ui.screens.home
 
-
+import androidx.activity.compose.BackHandler
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -122,6 +122,13 @@ fun HomeScreen(activity: MainActivity, navHostController: NavHostController) {
                 .fillMaxWidth(),
             hostState = snackBarHostState
         )
+    }
+
+
+    BackHandler(
+        enabled = true
+    ) {
+        activity.finish()
     }
 }
 
