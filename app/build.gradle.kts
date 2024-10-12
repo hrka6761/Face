@@ -3,6 +3,7 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.jetbrainsKotlinKapt)
     alias(libs.plugins.daggerHiltAndroid)
+    alias(libs.plugins.kotlin.compose)
 }
 
 android {
