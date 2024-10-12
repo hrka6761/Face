@@ -3,10 +3,12 @@ package ir.hrka.face.presentation.ui.screens.splash
 import android.Manifest.permission.CAMERA
 import android.content.Context
 import android.content.pm.PackageManager
+import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import ir.hrka.face.core.utilities.Constants.TAG
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import javax.inject.Inject
@@ -23,7 +25,6 @@ class SplashViewModel @Inject constructor(
 
 
     fun hasAllPermissions(): Boolean {
-
         requiredPermissions.forEach { permission ->
             if (ContextCompat.checkSelfPermission(
                     context,
@@ -36,9 +37,8 @@ class SplashViewModel @Inject constructor(
         return true
     }
 
-    fun getListOfDeniedPermissions(): String {
-
-        return buildString {
+    fun getListOfDeniedPermissions(): String =
+        buildString {
             append("\n")
             requiredPermissions.forEach { permission ->
                 if (ContextCompat.checkSelfPermission(
@@ -49,10 +49,9 @@ class SplashViewModel @Inject constructor(
                     append("\n* " + permission.split(".").last())
             }
         }
-    }
+
 
     fun setPermissionState(state: Map<String, Boolean>) {
-
         _permissionState.value = state
     }
 
