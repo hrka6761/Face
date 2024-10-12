@@ -1,5 +1,6 @@
 package ir.hrka.face.presentation.ui.screens.home
 
+import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.layout.fillMaxSize
@@ -13,6 +14,7 @@ import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -29,6 +31,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
 import ir.hrka.face.R
+import ir.hrka.face.core.utilities.Constants.TAG
 import ir.hrka.face.presentation.MainActivity
 import kotlinx.coroutines.launch
 
@@ -58,7 +61,7 @@ fun HomeScreen(activity: MainActivity, navHostController: NavHostController) {
                 },
             factory = {
                 PreviewView(it).apply {
-                    viewModel.initCameraPreview(this, lifecycleOwner)
+                    viewModel.bindPreview(this, lifecycleOwner)
                 }
             }
         )
@@ -129,6 +132,12 @@ fun HomeScreen(activity: MainActivity, navHostController: NavHostController) {
         enabled = true
     ) {
         activity.finish()
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            viewModel.unbindPreview()
+        }
     }
 }
 
