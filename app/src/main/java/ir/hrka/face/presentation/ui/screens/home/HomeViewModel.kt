@@ -1,56 +1,81 @@
 package ir.hrka.face.presentation.ui.screens.home
 
+import android.annotation.SuppressLint
 import android.content.Context
+import android.hardware.camera2.CameraMetadata.LENS_FACING_BACK
+import android.util.Log
+import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
-import androidx.camera.view.CameraController
-import androidx.camera.view.LifecycleCameraController
+import androidx.camera.core.Preview
+import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import ir.hrka.face.R
+import ir.hrka.face.core.utilities.Constants.TAG
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 import javax.inject.Inject
-import kotlin.jvm.Throws
 
+@SuppressLint("StaticFieldLeak", "WrongConstant")
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
-    private val controller = LifecycleCameraController(context).apply {
-        setEnabledUseCases(CameraController.IMAGE_CAPTURE or CameraController.VIDEO_CAPTURE)
-    }
+    private lateinit var _previewView: PreviewView
+    private lateinit var _lifecycleOwner: LifecycleOwner
     private val _flashLightState: MutableStateFlow<Boolean> = MutableStateFlow(false)
     val flashLightState: StateFlow<Boolean> = _flashLightState
+    private val cameraProvider: ProcessCameraProvider =
+        ProcessCameraProvider.getInstance(context).get()
+    private lateinit var camera: Camera
+    private lateinit var preview: Preview
+    private lateinit var cameraSelector: CameraSelector
+    private var lensFacing = LENS_FACING_BACK
 
 
     fun initCameraPreview(previewView: PreviewView, lifecycleOwner: LifecycleOwner) {
-        previewView.controller = controller
-        controller.bindToLifecycle(lifecycleOwner)
-        controller.enableTorch(_flashLightState.value)
+        _previewView = previewView
+        _lifecycleOwner = lifecycleOwner
+        preview = Preview.Builder().build()
+        preview.setSurfaceProvider(previewView.surfaceProvider)
+        cameraSelector = CameraSelector.Builder().requireLensFacing(lensFacing).build()
+        camera = cameraProvider.bindToLifecycle(lifecycleOwner, cameraSelector, preview)
+
+        CoroutineScope(Dispatchers.Main).launch {
+            _flashLightState.collect { state ->
+                camera.cameraControl.enableTorch(state)
+            }
+        }
     }
 
     fun switchCamera() {
-        controller.cameraSelector =
-            if (controller.cameraSelector == CameraSelector.DEFAULT_BACK_CAMERA) {
-                _flashLightState.value = false
-                CameraSelector.DEFAULT_FRONT_CAMERA
-            } else
-                CameraSelector.DEFAULT_BACK_CAMERA
+        lensFacing = if (lensFacing == CameraSelector.LENS_FACING_BACK) {
+            camera.cameraControl.enableTorch(false)
+            _flashLightState.value = false
+            CameraSelector.LENS_FACING_FRONT
+        } else {
+            CameraSelector.LENS_FACING_BACK
+        }
+        cameraProvider.unbind(preview)
+        initCameraPreview(_previewView, _lifecycleOwner)
     }
 
     @Throws(IllegalStateException::class)
     fun toggleFlashLight() {
-        if (controller.cameraSelector == CameraSelector.DEFAULT_BACK_CAMERA)
-            if (controller.torchState.value == 0) {
-                controller.enableTorch(true)
-                _flashLightState.value = true
-            } else {
-                controller.enableTorch(false)
+        if (lensFacing == LENS_FACING_BACK)
+            if (_flashLightState.value) {
+                camera.cameraControl.enableTorch(false)
                 _flashLightState.value = false
+            } else {
+                camera.cameraControl.enableTorch(true)
+                _flashLightState.value = true
             }
         else
             throw IllegalStateException(context.getString(R.string.home_view_model_toggle_flash_light_in_front_camera_msg_error))
