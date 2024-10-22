@@ -1,8 +1,14 @@
 package ir.hrka.face.presentation.ui.screens.home
 
+import android.annotation.SuppressLint
+import android.content.res.Configuration
 import android.util.Log
 import androidx.activity.compose.BackHandler
+import android.hardware.camera2.CameraMetadata.LENS_FACING_FRONT
 import androidx.camera.view.PreviewView
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -19,14 +25,23 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.constraintlayout.compose.ConstraintLayout
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
@@ -35,96 +50,18 @@ import ir.hrka.face.core.utilities.Constants.TAG
 import ir.hrka.face.presentation.MainActivity
 import kotlinx.coroutines.launch
 
+@SuppressLint("SwitchIntDef")
 @Composable
 fun HomeScreen(activity: MainActivity, navHostController: NavHostController) {
 
+    val configuration = LocalConfiguration.current
     val viewModel: HomeViewModel = hiltViewModel()
     val lifecycleOwner = LocalLifecycleOwner.current
-    val flashLightState by viewModel.flashLightState.collectAsState()
-    val scope = rememberCoroutineScope()
-    val snackBarHostState = remember { SnackbarHostState() }
 
 
-    ConstraintLayout(
-        modifier = Modifier.fillMaxSize()
-    ) {
-        val (preview, switchBtn, flashBtn, snackBar) = createRefs()
-
-        AndroidView(
-            modifier = Modifier
-                .fillMaxSize()
-                .constrainAs(preview) {
-                    top.linkTo(parent.top)
-                    bottom.linkTo(parent.bottom)
-                    start.linkTo(parent.start)
-                    end.linkTo(parent.end)
-                },
-            factory = {
-                PreviewView(it).apply {
-                    viewModel.bindPreview(this, lifecycleOwner)
-                }
-            }
-        )
-
-        FloatingActionButton(
-            modifier = Modifier
-                .width(50.dp)
-                .height(50.dp)
-                .alpha(0.5f)
-                .constrainAs(switchBtn) {
-                    bottom.linkTo(parent.bottom, margin = 16.dp)
-                    end.linkTo(parent.end, margin = 16.dp)
-                },
-            shape = RoundedCornerShape(50),
-            onClick = {
-                viewModel.switchCamera()
-            }
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.camera_switch),
-                contentDescription = "Camera switch"
-            )
-        }
-
-        FloatingActionButton(
-            modifier = Modifier
-                .width(40.dp)
-                .height(40.dp)
-                .alpha(if (flashLightState) 1f else 0.5f)
-                .constrainAs(flashBtn) {
-                    bottom.linkTo(switchBtn.top, margin = 16.dp)
-                    end.linkTo(parent.end, margin = 21.dp)
-                },
-            shape = RoundedCornerShape(50),
-            onClick = {
-                try {
-                    viewModel.toggleFlashLight()
-                } catch (e: IllegalStateException) {
-                    scope.launch {
-                        snackBarHostState.showSnackbar(
-                            message = e.message.toString(),
-                            duration = SnackbarDuration.Short
-                        )
-                    }
-                }
-            }
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.flash_light),
-                contentDescription = "Flash light"
-            )
-        }
-
-        SnackbarHost(
-            modifier = Modifier
-                .constrainAs(snackBar) {
-                    bottom.linkTo(parent.bottom)
-                    start.linkTo(parent.start)
-                    end.linkTo(parent.end)
-                }
-                .fillMaxWidth(),
-            hostState = snackBarHostState
-        )
+    when (configuration.orientation) {
+        Configuration.ORIENTATION_PORTRAIT -> PortraitScreen(viewModel, lifecycleOwner)
+        Configuration.ORIENTATION_LANDSCAPE -> LandscapeScreen(viewModel, lifecycleOwner)
     }
 
 
@@ -139,6 +76,342 @@ fun HomeScreen(activity: MainActivity, navHostController: NavHostController) {
             viewModel.unbindPreview()
         }
     }
+}
+
+@Composable
+fun PortraitScreen(
+    viewModel: HomeViewModel,
+    lifecycleOwner: LifecycleOwner
+) {
+    ConstraintLayout(
+        modifier = Modifier.fillMaxSize()
+    ) {
+
+        val flashLightState by viewModel.flashLightState.collectAsState()
+        val previewSurfaceSize by viewModel.previewSurfaceSize.collectAsState()
+        val detectedFaces by viewModel.detectedFaces.collectAsState()
+        val lensFacing by viewModel.lensFacing.collectAsState()
+        val scope = rememberCoroutineScope()
+        val snackBarHostState = remember { SnackbarHostState() }
+        val (preview, overlay, controlBtn, snackBar) = createRefs()
+
+
+        AndroidView(
+            modifier = Modifier
+                .width(previewSurfaceSize.first.toDp())
+                .height(previewSurfaceSize.second.toDp())
+                .constrainAs(preview) {
+                    top.linkTo(parent.top, margin = 48.dp)
+                    start.linkTo(parent.start)
+                    end.linkTo(parent.end)
+                },
+            factory = {
+                PreviewView(it).apply {
+                    viewModel.bindPreview(this, lifecycleOwner)
+                }
+            }
+        )
+
+        Canvas(
+            modifier = Modifier
+                .width(previewSurfaceSize.first.toDp())
+                .height(previewSurfaceSize.second.toDp())
+                .constrainAs(overlay) {
+                    top.linkTo(parent.top, margin = 48.dp)
+                    start.linkTo(parent.start)
+                    end.linkTo(parent.end)
+                }
+        ) {
+            drawLine(
+                color = Color.Gray,
+                start = Offset(size.width / 2, 0f),
+                end = Offset(size.width / 2, size.height),
+                strokeWidth = 2f,
+                cap = StrokeCap.Round
+            )
+
+            drawLine(
+                color = Color.Gray,
+                start = Offset(0f, size.height / 2),
+                end = Offset(size.width, size.height / 2),
+                strokeWidth = 2f,
+                cap = StrokeCap.Round
+            )
+
+            repeat(detectedFaces.size) {
+                val face = detectedFaces[it]
+
+                drawRect(
+                    color = Color.Red,
+                    topLeft = Offset(
+                        if (lensFacing == LENS_FACING_FRONT)
+                            previewSurfaceSize.first - face.boundingBox.centerX()
+                                .toFloat() - (face.boundingBox.width().toFloat() / 2)
+                        else
+                            face.boundingBox.centerX().toFloat() - (face.boundingBox.width()
+                                .toFloat() / 2),
+                        face.boundingBox.centerY().toFloat() - (face.boundingBox.height()
+                            .toFloat() / 2)
+                    ),
+                    size = Size(
+                        face.boundingBox.width().toFloat(),
+                        face.boundingBox.height().toFloat()
+                    ),
+                    style = Stroke(width = 5f)
+                )
+
+                drawCircle(
+                    color = Color.Yellow,
+                    radius = 10f,
+                    center = Offset(
+                        if (if (lensFacing == LENS_FACING_FRONT) face.boundingBox.centerX() <= previewSurfaceSize.first / 2 else face.boundingBox.centerX() >= previewSurfaceSize.first / 2) 50f else previewSurfaceSize.first - 50f,
+                        50f
+                    )
+                )
+
+                drawCircle(
+                    color = Color.Blue,
+                    radius = 10f,
+                    center = Offset(
+                        previewSurfaceSize.first / 2,
+                        if (face.boundingBox.centerY() >= previewSurfaceSize.second / 2) 50f else previewSurfaceSize.second - 50f
+                    )
+                )
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .constrainAs(controlBtn) {
+                    top.linkTo(overlay.bottom, margin = 16.dp)
+                    start.linkTo(parent.start)
+                    end.linkTo(parent.end)
+                },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)
+        ) {
+            FloatingActionButton(
+                modifier = Modifier
+                    .width(50.dp)
+                    .height(50.dp),
+                shape = RoundedCornerShape(50),
+                onClick = {
+                    viewModel.switchCamera()
+                }
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.camera_switch),
+                    contentDescription = "Camera switch"
+                )
+            }
+
+            FloatingActionButton(
+                modifier = Modifier
+                    .width(50.dp)
+                    .height(50.dp),
+                shape = RoundedCornerShape(50),
+                onClick = {
+                    try {
+                        viewModel.toggleFlashLight()
+                    } catch (e: IllegalStateException) {
+                        scope.launch {
+                            snackBarHostState.showSnackbar(
+                                message = e.message.toString(),
+                                duration = SnackbarDuration.Short
+                            )
+                        }
+                    }
+                }
+            ) {
+                Icon(
+                    painter = painterResource(if (flashLightState) R.drawable.flashlight_off else R.drawable.flashlight_on),
+                    contentDescription = "Flash light"
+                )
+            }
+        }
+
+        SnackbarHost(
+            modifier = Modifier
+                .constrainAs(snackBar) {
+                    bottom.linkTo(parent.bottom)
+                    start.linkTo(parent.start)
+                    end.linkTo(parent.end)
+                }
+                .fillMaxWidth(),
+            hostState = snackBarHostState
+        )
+    }
+}
+
+@Composable
+fun LandscapeScreen(
+    viewModel: HomeViewModel,
+    lifecycleOwner: LifecycleOwner
+) {
+    ConstraintLayout(
+        modifier = Modifier.fillMaxSize()
+    ) {
+
+        val flashLightState by viewModel.flashLightState.collectAsState()
+        val previewSurfaceSize by viewModel.previewSurfaceSize.collectAsState()
+        val detectedFaces by viewModel.detectedFaces.collectAsState()
+        val lensFacing by viewModel.lensFacing.collectAsState()
+        val scope = rememberCoroutineScope()
+        val snackBarHostState = remember { SnackbarHostState() }
+        val (preview, overlay, snackBar, controlBtn) = createRefs()
+
+
+        AndroidView(
+            modifier = Modifier
+                .width(previewSurfaceSize.second.toDp())
+                .height(previewSurfaceSize.first.toDp())
+                .constrainAs(preview) {
+                    top.linkTo(parent.top, margin = 48.dp)
+                    start.linkTo(parent.start, margin = 48.dp)
+                },
+            factory = {
+                PreviewView(it).apply {
+                    viewModel.bindPreview(this, lifecycleOwner)
+                }
+            }
+        )
+
+        Canvas(
+            modifier = Modifier
+                .width(previewSurfaceSize.second.toDp())
+                .height(previewSurfaceSize.first.toDp())
+                .constrainAs(overlay) {
+                    top.linkTo(parent.top, margin = 48.dp)
+                    start.linkTo(parent.start, margin = 48.dp)
+                }
+        ) {
+            drawLine(
+                color = Color.Gray,
+                start = Offset(size.width / 2, 0f),
+                end = Offset(size.width / 2, size.height),
+                strokeWidth = 2f,
+                cap = StrokeCap.Round
+            )
+
+            drawLine(
+                color = Color.Gray,
+                start = Offset(0f, size.height / 2),
+                end = Offset(size.width, size.height / 2),
+                strokeWidth = 2f,
+                cap = StrokeCap.Round
+            )
+
+            repeat(detectedFaces.size) {
+                val face = detectedFaces[it]
+
+                drawRect(
+                    color = Color.Red,
+                    topLeft = Offset(
+                        if (lensFacing == LENS_FACING_FRONT)
+                            previewSurfaceSize.second - face.boundingBox.centerX()
+                                .toFloat() - (face.boundingBox.width().toFloat() / 2)
+                        else
+                            face.boundingBox.centerX().toFloat() - (face.boundingBox.width()
+                                .toFloat() / 2),
+                        face.boundingBox.centerY().toFloat() - (face.boundingBox.height()
+                            .toFloat() / 2)
+                    ),
+                    size = Size(
+                        face.boundingBox.width().toFloat(),
+                        face.boundingBox.height().toFloat()
+                    ),
+                    style = Stroke(width = 5f)
+                )
+
+                drawCircle(
+                    color = Color.Yellow,
+                    radius = 10f,
+                    center = Offset(
+                        if (if (lensFacing == LENS_FACING_FRONT) face.boundingBox.centerX() <= previewSurfaceSize.second / 2 else face.boundingBox.centerX() >= previewSurfaceSize.second / 2) 50f else previewSurfaceSize.second - 50f,
+                        50f
+                    )
+                )
+
+                drawCircle(
+                    color = Color.Blue,
+                    radius = 10f,
+                    center = Offset(
+                        previewSurfaceSize.second / 2,
+                        if (face.boundingBox.centerY() >= previewSurfaceSize.first / 2) 50f else previewSurfaceSize.first - 50f
+                    )
+                )
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .constrainAs(controlBtn) {
+                    top.linkTo(overlay.bottom)
+                    bottom.linkTo(parent.bottom)
+                    start.linkTo(parent.start, margin = 48.dp)
+                    end.linkTo(overlay.end)
+                },
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)
+        ) {
+            FloatingActionButton(
+                modifier = Modifier
+                    .width(50.dp)
+                    .height(50.dp),
+                shape = RoundedCornerShape(50),
+                onClick = {
+                    viewModel.switchCamera()
+                }
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.camera_switch),
+                    contentDescription = "Camera switch"
+                )
+            }
+
+            FloatingActionButton(
+                modifier = Modifier
+                    .width(50.dp)
+                    .height(50.dp),
+                shape = RoundedCornerShape(50),
+                onClick = {
+                    try {
+                        viewModel.toggleFlashLight()
+                    } catch (e: IllegalStateException) {
+                        scope.launch {
+                            snackBarHostState.showSnackbar(
+                                message = e.message.toString(),
+                                duration = SnackbarDuration.Short
+                            )
+                        }
+                    }
+                }
+            ) {
+                Icon(
+                    painter = painterResource(if (flashLightState) R.drawable.flashlight_off else R.drawable.flashlight_on),
+                    contentDescription = "Flash light"
+                )
+            }
+        }
+
+        SnackbarHost(
+            modifier = Modifier
+                .constrainAs(snackBar) {
+                    bottom.linkTo(parent.bottom)
+                    start.linkTo(parent.start)
+                    end.linkTo(parent.end)
+                }
+                .fillMaxWidth(),
+            hostState = snackBarHostState
+        )
+    }
+}
+
+
+@Composable
+fun Float.toDp(): Dp {
+    val density = LocalDensity.current
+    return with(density) { this@toDp.toDp() }
 }
 
 
