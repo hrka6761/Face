@@ -40,7 +40,6 @@ class GlobalModule {
             .setContourMode(FaceDetectorOptions.CONTOUR_MODE_NONE)
             .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_NONE)
             .setMinFaceSize(0.1f)
-            .enableTracking()
             .build()
 
     @Provides

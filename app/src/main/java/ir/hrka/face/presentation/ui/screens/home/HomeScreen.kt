@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.content.res.Configuration
 import android.util.Log
 import androidx.activity.compose.BackHandler
-import android.hardware.camera2.CameraMetadata.LENS_FACING_FRONT
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
@@ -90,7 +89,6 @@ fun PortraitScreen(
         val flashLightState by viewModel.flashLightState.collectAsState()
         val previewSurfaceSize by viewModel.previewSurfaceSize.collectAsState()
         val detectedFaces by viewModel.detectedFaces.collectAsState()
-        val lensFacing by viewModel.lensFacing.collectAsState()
         val scope = rememberCoroutineScope()
         val snackBarHostState = remember { SnackbarHostState() }
         val (preview, overlay, controlBtn, snackBar) = createRefs()
@@ -107,7 +105,7 @@ fun PortraitScreen(
                 },
             factory = {
                 PreviewView(it).apply {
-                    viewModel.bindPreview(this, lifecycleOwner)
+                    viewModel.bindPreview(this, lifecycleOwner, Configuration.ORIENTATION_PORTRAIT)
                 }
             }
         )
@@ -139,24 +137,12 @@ fun PortraitScreen(
             )
 
             repeat(detectedFaces.size) {
-                val face = detectedFaces[it]
+                val faceOverlay = detectedFaces[it]
 
                 drawRect(
                     color = Color.Red,
-                    topLeft = Offset(
-                        if (lensFacing == LENS_FACING_FRONT)
-                            previewSurfaceSize.first - face.boundingBox.centerX()
-                                .toFloat() - (face.boundingBox.width().toFloat() / 2)
-                        else
-                            face.boundingBox.centerX().toFloat() - (face.boundingBox.width()
-                                .toFloat() / 2),
-                        face.boundingBox.centerY().toFloat() - (face.boundingBox.height()
-                            .toFloat() / 2)
-                    ),
-                    size = Size(
-                        face.boundingBox.width().toFloat(),
-                        face.boundingBox.height().toFloat()
-                    ),
+                    topLeft = Offset(faceOverlay.faceLeft, faceOverlay.faceTop),
+                    size = Size(faceOverlay.faceWith, faceOverlay.faceHeight),
                     style = Stroke(width = 5f)
                 )
 
@@ -164,8 +150,8 @@ fun PortraitScreen(
                     color = Color.Yellow,
                     radius = 10f,
                     center = Offset(
-                        if (if (lensFacing == LENS_FACING_FRONT) face.boundingBox.centerX() <= previewSurfaceSize.first / 2 else face.boundingBox.centerX() >= previewSurfaceSize.first / 2) 50f else previewSurfaceSize.first - 50f,
-                        50f
+                        faceOverlay.balanceCircles.horizontalBalanceCircleX,
+                        faceOverlay.balanceCircles.horizontalBalanceCircleY
                     )
                 )
 
@@ -173,8 +159,8 @@ fun PortraitScreen(
                     color = Color.Blue,
                     radius = 10f,
                     center = Offset(
-                        previewSurfaceSize.first / 2,
-                        if (face.boundingBox.centerY() >= previewSurfaceSize.second / 2) 50f else previewSurfaceSize.second - 50f
+                        faceOverlay.balanceCircles.verticalBalanceCircleX,
+                        faceOverlay.balanceCircles.verticalBalanceCircleY
                     )
                 )
             }
@@ -255,7 +241,6 @@ fun LandscapeScreen(
         val flashLightState by viewModel.flashLightState.collectAsState()
         val previewSurfaceSize by viewModel.previewSurfaceSize.collectAsState()
         val detectedFaces by viewModel.detectedFaces.collectAsState()
-        val lensFacing by viewModel.lensFacing.collectAsState()
         val scope = rememberCoroutineScope()
         val snackBarHostState = remember { SnackbarHostState() }
         val (preview, overlay, snackBar, controlBtn) = createRefs()
@@ -271,7 +256,7 @@ fun LandscapeScreen(
                 },
             factory = {
                 PreviewView(it).apply {
-                    viewModel.bindPreview(this, lifecycleOwner)
+                    viewModel.bindPreview(this, lifecycleOwner, Configuration.ORIENTATION_LANDSCAPE)
                 }
             }
         )
@@ -302,24 +287,12 @@ fun LandscapeScreen(
             )
 
             repeat(detectedFaces.size) {
-                val face = detectedFaces[it]
+                val faceOverlay = detectedFaces[it]
 
                 drawRect(
                     color = Color.Red,
-                    topLeft = Offset(
-                        if (lensFacing == LENS_FACING_FRONT)
-                            previewSurfaceSize.second - face.boundingBox.centerX()
-                                .toFloat() - (face.boundingBox.width().toFloat() / 2)
-                        else
-                            face.boundingBox.centerX().toFloat() - (face.boundingBox.width()
-                                .toFloat() / 2),
-                        face.boundingBox.centerY().toFloat() - (face.boundingBox.height()
-                            .toFloat() / 2)
-                    ),
-                    size = Size(
-                        face.boundingBox.width().toFloat(),
-                        face.boundingBox.height().toFloat()
-                    ),
+                    topLeft = Offset(faceOverlay.faceLeft, faceOverlay.faceTop),
+                    size = Size(faceOverlay.faceWith, faceOverlay.faceHeight),
                     style = Stroke(width = 5f)
                 )
 
@@ -327,8 +300,8 @@ fun LandscapeScreen(
                     color = Color.Yellow,
                     radius = 10f,
                     center = Offset(
-                        if (if (lensFacing == LENS_FACING_FRONT) face.boundingBox.centerX() <= previewSurfaceSize.second / 2 else face.boundingBox.centerX() >= previewSurfaceSize.second / 2) 50f else previewSurfaceSize.second - 50f,
-                        50f
+                        faceOverlay.balanceCircles.horizontalBalanceCircleX,
+                        faceOverlay.balanceCircles.horizontalBalanceCircleY
                     )
                 )
 
@@ -336,8 +309,8 @@ fun LandscapeScreen(
                     color = Color.Blue,
                     radius = 10f,
                     center = Offset(
-                        previewSurfaceSize.second / 2,
-                        if (face.boundingBox.centerY() >= previewSurfaceSize.first / 2) 50f else previewSurfaceSize.first - 50f
+                        faceOverlay.balanceCircles.verticalBalanceCircleX,
+                        faceOverlay.balanceCircles.verticalBalanceCircleY
                     )
                 )
             }
