@@ -4,6 +4,8 @@ import android.annotation.SuppressLint
 import android.content.res.Configuration
 import android.util.Log
 import androidx.activity.compose.BackHandler
+import androidx.camera.core.ImageAnalysis
+import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
@@ -44,6 +46,9 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
+import com.google.mlkit.vision.face.FaceDetection
+import com.google.mlkit.vision.face.FaceDetector
+import com.google.mlkit.vision.face.FaceDetectorOptions
 import ir.hrka.face.R
 import ir.hrka.face.core.utilities.Constants.TAG
 import ir.hrka.face.presentation.MainActivity
@@ -56,11 +61,17 @@ fun HomeScreen(activity: MainActivity, navHostController: NavHostController) {
     val configuration = LocalConfiguration.current
     val viewModel: HomeViewModel = hiltViewModel()
     val lifecycleOwner = LocalLifecycleOwner.current
+    val cameraProvider: ProcessCameraProvider = ProcessCameraProvider.getInstance(activity).get()
+    val preview: androidx.camera.core.Preview = androidx.camera.core.Preview.Builder().build()
+    val imageAnalysis: ImageAnalysis = ImageAnalysis.Builder().build()
+    val faceDetector: FaceDetector = FaceDetection.getClient(initFaceDetectorOptions())
+    val previewController =
+        PreviewController(activity, cameraProvider, preview, imageAnalysis, faceDetector)
 
 
     when (configuration.orientation) {
-        Configuration.ORIENTATION_PORTRAIT -> PortraitScreen(viewModel, lifecycleOwner)
-        Configuration.ORIENTATION_LANDSCAPE -> LandscapeScreen(viewModel, lifecycleOwner)
+        Configuration.ORIENTATION_PORTRAIT -> PortraitScreen(previewController, lifecycleOwner)
+        Configuration.ORIENTATION_LANDSCAPE -> LandscapeScreen(previewController, lifecycleOwner)
     }
 
 
@@ -72,23 +83,23 @@ fun HomeScreen(activity: MainActivity, navHostController: NavHostController) {
 
     DisposableEffect(Unit) {
         onDispose {
-            viewModel.unbindPreview()
+            previewController.unbindPreview()
         }
     }
 }
 
 @Composable
 fun PortraitScreen(
-    viewModel: HomeViewModel,
+    previewController: PreviewController,
     lifecycleOwner: LifecycleOwner
 ) {
     ConstraintLayout(
         modifier = Modifier.fillMaxSize()
     ) {
 
-        val flashLightState by viewModel.flashLightState.collectAsState()
-        val previewSurfaceSize by viewModel.previewSurfaceSize.collectAsState()
-        val detectedFaces by viewModel.detectedFaces.collectAsState()
+        val flashLightState by previewController.flashLightState.collectAsState()
+        val previewSurfaceSize by previewController.previewSurfaceSize.collectAsState()
+        val detectedFaces by previewController.detectedFaces.collectAsState()
         val scope = rememberCoroutineScope()
         val snackBarHostState = remember { SnackbarHostState() }
         val (preview, overlay, controlBtn, snackBar) = createRefs()
@@ -105,7 +116,11 @@ fun PortraitScreen(
                 },
             factory = {
                 PreviewView(it).apply {
-                    viewModel.bindPreview(this, lifecycleOwner, Configuration.ORIENTATION_PORTRAIT)
+                    previewController.bindPreview(
+                        this,
+                        lifecycleOwner,
+                        Configuration.ORIENTATION_PORTRAIT
+                    )
                 }
             }
         )
@@ -182,7 +197,7 @@ fun PortraitScreen(
                     .height(50.dp),
                 shape = RoundedCornerShape(50),
                 onClick = {
-                    viewModel.switchCamera()
+                    previewController.switchCamera()
                 }
             ) {
                 Icon(
@@ -198,7 +213,7 @@ fun PortraitScreen(
                 shape = RoundedCornerShape(50),
                 onClick = {
                     try {
-                        viewModel.toggleFlashLight()
+                        previewController.toggleFlashLight()
                     } catch (e: IllegalStateException) {
                         scope.launch {
                             snackBarHostState.showSnackbar(
@@ -231,16 +246,16 @@ fun PortraitScreen(
 
 @Composable
 fun LandscapeScreen(
-    viewModel: HomeViewModel,
+    previewController: PreviewController,
     lifecycleOwner: LifecycleOwner
 ) {
     ConstraintLayout(
         modifier = Modifier.fillMaxSize()
     ) {
 
-        val flashLightState by viewModel.flashLightState.collectAsState()
-        val previewSurfaceSize by viewModel.previewSurfaceSize.collectAsState()
-        val detectedFaces by viewModel.detectedFaces.collectAsState()
+        val flashLightState by previewController.flashLightState.collectAsState()
+        val previewSurfaceSize by previewController.previewSurfaceSize.collectAsState()
+        val detectedFaces by previewController.detectedFaces.collectAsState()
         val scope = rememberCoroutineScope()
         val snackBarHostState = remember { SnackbarHostState() }
         val (preview, overlay, snackBar, controlBtn) = createRefs()
@@ -256,7 +271,11 @@ fun LandscapeScreen(
                 },
             factory = {
                 PreviewView(it).apply {
-                    viewModel.bindPreview(this, lifecycleOwner, Configuration.ORIENTATION_LANDSCAPE)
+                    previewController.bindPreview(
+                        this,
+                        lifecycleOwner,
+                        Configuration.ORIENTATION_LANDSCAPE
+                    )
                 }
             }
         )
@@ -333,7 +352,7 @@ fun LandscapeScreen(
                     .height(50.dp),
                 shape = RoundedCornerShape(50),
                 onClick = {
-                    viewModel.switchCamera()
+                    previewController.switchCamera()
                 }
             ) {
                 Icon(
@@ -349,7 +368,7 @@ fun LandscapeScreen(
                 shape = RoundedCornerShape(50),
                 onClick = {
                     try {
-                        viewModel.toggleFlashLight()
+                        previewController.toggleFlashLight()
                     } catch (e: IllegalStateException) {
                         scope.launch {
                             snackBarHostState.showSnackbar(
@@ -386,6 +405,15 @@ fun Float.toDp(): Dp {
     val density = LocalDensity.current
     return with(density) { this@toDp.toDp() }
 }
+
+fun initFaceDetectorOptions(): FaceDetectorOptions =
+    FaceDetectorOptions.Builder()
+        .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_ACCURATE)
+        .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_NONE)
+        .setContourMode(FaceDetectorOptions.CONTOUR_MODE_NONE)
+        .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_NONE)
+        .setMinFaceSize(0.1f)
+        .build()
 
 
 @Preview(showBackground = true)
