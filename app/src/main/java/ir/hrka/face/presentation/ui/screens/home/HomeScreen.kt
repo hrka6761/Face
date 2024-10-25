@@ -4,8 +4,6 @@ import android.annotation.SuppressLint
 import android.content.res.Configuration
 import android.util.Log
 import androidx.activity.compose.BackHandler
-import androidx.camera.core.ImageAnalysis
-import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
@@ -46,9 +44,6 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
-import com.google.mlkit.vision.face.FaceDetection
-import com.google.mlkit.vision.face.FaceDetector
-import com.google.mlkit.vision.face.FaceDetectorOptions
 import ir.hrka.face.R
 import ir.hrka.face.core.utilities.Constants.TAG
 import ir.hrka.face.presentation.MainActivity
@@ -61,17 +56,21 @@ fun HomeScreen(activity: MainActivity, navHostController: NavHostController) {
     val configuration = LocalConfiguration.current
     val viewModel: HomeViewModel = hiltViewModel()
     val lifecycleOwner = LocalLifecycleOwner.current
-    val cameraProvider: ProcessCameraProvider = ProcessCameraProvider.getInstance(activity).get()
-    val preview: androidx.camera.core.Preview = androidx.camera.core.Preview.Builder().build()
-    val imageAnalysis: ImageAnalysis = ImageAnalysis.Builder().build()
-    val faceDetector: FaceDetector = FaceDetection.getClient(initFaceDetectorOptions())
-    val previewController =
-        PreviewController(activity, cameraProvider, preview, imageAnalysis, faceDetector)
+    val previewController = PreviewController(activity, viewModel)
 
 
     when (configuration.orientation) {
-        Configuration.ORIENTATION_PORTRAIT -> PortraitScreen(previewController, lifecycleOwner)
-        Configuration.ORIENTATION_LANDSCAPE -> LandscapeScreen(previewController, lifecycleOwner)
+        Configuration.ORIENTATION_PORTRAIT -> PortraitScreen(
+            viewModel,
+            previewController,
+            lifecycleOwner
+        )
+
+        Configuration.ORIENTATION_LANDSCAPE -> LandscapeScreen(
+            viewModel,
+            previewController,
+            lifecycleOwner
+        )
     }
 
 
@@ -90,6 +89,7 @@ fun HomeScreen(activity: MainActivity, navHostController: NavHostController) {
 
 @Composable
 fun PortraitScreen(
+    viewModel: HomeViewModel,
     previewController: PreviewController,
     lifecycleOwner: LifecycleOwner
 ) {
@@ -97,9 +97,9 @@ fun PortraitScreen(
         modifier = Modifier.fillMaxSize()
     ) {
 
-        val flashLightState by previewController.flashLightState.collectAsState()
+        val flashLightState by viewModel.flashLightState.collectAsState()
         val previewSurfaceSize by previewController.previewSurfaceSize.collectAsState()
-        val detectedFaces by previewController.detectedFaces.collectAsState()
+        val detectedFaces by viewModel.detectedFaces.collectAsState()
         val scope = rememberCoroutineScope()
         val snackBarHostState = remember { SnackbarHostState() }
         val (preview, overlay, controlBtn, snackBar) = createRefs()
@@ -152,7 +152,7 @@ fun PortraitScreen(
             )
 
             repeat(detectedFaces.size) {
-                val faceOverlay = detectedFaces[it]
+                val faceOverlay = previewController.getFaceOverlay(detectedFaces[it])
 
                 drawRect(
                     color = Color.Red,
@@ -246,6 +246,7 @@ fun PortraitScreen(
 
 @Composable
 fun LandscapeScreen(
+    viewModel: HomeViewModel,
     previewController: PreviewController,
     lifecycleOwner: LifecycleOwner
 ) {
@@ -253,9 +254,9 @@ fun LandscapeScreen(
         modifier = Modifier.fillMaxSize()
     ) {
 
-        val flashLightState by previewController.flashLightState.collectAsState()
+        val flashLightState by viewModel.flashLightState.collectAsState()
         val previewSurfaceSize by previewController.previewSurfaceSize.collectAsState()
-        val detectedFaces by previewController.detectedFaces.collectAsState()
+        val detectedFaces by viewModel.detectedFaces.collectAsState()
         val scope = rememberCoroutineScope()
         val snackBarHostState = remember { SnackbarHostState() }
         val (preview, overlay, snackBar, controlBtn) = createRefs()
@@ -306,7 +307,7 @@ fun LandscapeScreen(
             )
 
             repeat(detectedFaces.size) {
-                val faceOverlay = detectedFaces[it]
+                val faceOverlay = previewController.getFaceOverlay(detectedFaces[it])
 
                 drawRect(
                     color = Color.Red,
@@ -405,15 +406,6 @@ fun Float.toDp(): Dp {
     val density = LocalDensity.current
     return with(density) { this@toDp.toDp() }
 }
-
-fun initFaceDetectorOptions(): FaceDetectorOptions =
-    FaceDetectorOptions.Builder()
-        .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_ACCURATE)
-        .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_NONE)
-        .setContourMode(FaceDetectorOptions.CONTOUR_MODE_NONE)
-        .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_NONE)
-        .setMinFaceSize(0.1f)
-        .build()
 
 
 @Preview(showBackground = true)
