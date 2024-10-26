@@ -98,11 +98,13 @@ fun PortraitScreen(
     ) {
 
         val flashLightState by viewModel.flashLightState.collectAsState()
-        val previewSurfaceSize by previewController.previewSurfaceSize.collectAsState()
+        val previewSurfaceSize by viewModel.surfaceSize.collectAsState()
         val detectedFaces by viewModel.detectedFaces.collectAsState()
         val scope = rememberCoroutineScope()
         val snackBarHostState = remember { SnackbarHostState() }
         val (preview, overlay, controlBtn, snackBar) = createRefs()
+        val faceOverlayController =
+            FaceOverlayController(viewModel, Configuration.ORIENTATION_PORTRAIT)
 
 
         AndroidView(
@@ -116,11 +118,7 @@ fun PortraitScreen(
                 },
             factory = {
                 PreviewView(it).apply {
-                    previewController.bindPreview(
-                        this,
-                        lifecycleOwner,
-                        Configuration.ORIENTATION_PORTRAIT
-                    )
+                    previewController.bindPreview(this, lifecycleOwner)
                 }
             }
         )
@@ -152,7 +150,7 @@ fun PortraitScreen(
             )
 
             repeat(detectedFaces.size) {
-                val faceOverlay = previewController.getFaceOverlay(detectedFaces[it])
+                val faceOverlay = faceOverlayController.getFaceOverlay(detectedFaces[it])
 
                 drawRect(
                     color = Color.Red,
@@ -255,11 +253,13 @@ fun LandscapeScreen(
     ) {
 
         val flashLightState by viewModel.flashLightState.collectAsState()
-        val previewSurfaceSize by previewController.previewSurfaceSize.collectAsState()
+        val previewSurfaceSize by viewModel.surfaceSize.collectAsState()
         val detectedFaces by viewModel.detectedFaces.collectAsState()
         val scope = rememberCoroutineScope()
         val snackBarHostState = remember { SnackbarHostState() }
         val (preview, overlay, snackBar, controlBtn) = createRefs()
+        val faceOverlayController =
+            FaceOverlayController(viewModel, Configuration.ORIENTATION_PORTRAIT)
 
 
         AndroidView(
@@ -272,11 +272,7 @@ fun LandscapeScreen(
                 },
             factory = {
                 PreviewView(it).apply {
-                    previewController.bindPreview(
-                        this,
-                        lifecycleOwner,
-                        Configuration.ORIENTATION_LANDSCAPE
-                    )
+                    previewController.bindPreview(this, lifecycleOwner)
                 }
             }
         )
@@ -307,7 +303,7 @@ fun LandscapeScreen(
             )
 
             repeat(detectedFaces.size) {
-                val faceOverlay = previewController.getFaceOverlay(detectedFaces[it])
+                val faceOverlay = faceOverlayController.getFaceOverlay(detectedFaces[it])
 
                 drawRect(
                     color = Color.Red,

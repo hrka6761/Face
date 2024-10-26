@@ -34,6 +34,9 @@ class HomeViewModel @Inject constructor(
     val detectedFaces: StateFlow<List<Face>> = _detectedFaces
     private val _lensFacing: MutableStateFlow<Int> = MutableStateFlow(LENS_FACING_BACK)
     val lensFacing: StateFlow<Int> = _lensFacing
+    private val _surfaceSize: MutableStateFlow<Pair<Float, Float>> =
+        MutableStateFlow(Pair(480f, 640f))
+    val surfaceSize: StateFlow<Pair<Float, Float>> = _surfaceSize
 
 
     fun setFlashlightState(state: Boolean) {
@@ -42,6 +45,11 @@ class HomeViewModel @Inject constructor(
 
     fun setLensFacing(lens: Int) {
         _lensFacing.value = lens
+    }
+
+    fun setSurfaceSize(x: Int, y: Int) {
+        if (x != 480 && y != 640)
+            _surfaceSize.value = Pair(x.toFloat(), y.toFloat())
     }
 
     @OptIn(ExperimentalGetImage::class)
