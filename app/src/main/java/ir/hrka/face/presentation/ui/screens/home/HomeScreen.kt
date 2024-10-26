@@ -1,7 +1,8 @@
 package ir.hrka.face.presentation.ui.screens.home
 
 import android.annotation.SuppressLint
-import android.content.res.Configuration
+import android.content.res.Configuration.ORIENTATION_LANDSCAPE
+import android.content.res.Configuration.ORIENTATION_PORTRAIT
 import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.camera.view.PreviewView
@@ -56,19 +57,19 @@ fun HomeScreen(activity: MainActivity, navHostController: NavHostController) {
     val configuration = LocalConfiguration.current
     val viewModel: HomeViewModel = hiltViewModel()
     val lifecycleOwner = LocalLifecycleOwner.current
-    val previewController = PreviewController(activity, viewModel)
+    val cameraPreviewController = CameraPreviewController(viewModel, activity)
 
 
     when (configuration.orientation) {
-        Configuration.ORIENTATION_PORTRAIT -> PortraitScreen(
+        ORIENTATION_PORTRAIT -> PortraitScreen(
             viewModel,
-            previewController,
+            cameraPreviewController,
             lifecycleOwner
         )
 
-        Configuration.ORIENTATION_LANDSCAPE -> LandscapeScreen(
+        ORIENTATION_LANDSCAPE -> LandscapeScreen(
             viewModel,
-            previewController,
+            cameraPreviewController,
             lifecycleOwner
         )
     }
@@ -82,7 +83,7 @@ fun HomeScreen(activity: MainActivity, navHostController: NavHostController) {
 
     DisposableEffect(Unit) {
         onDispose {
-            previewController.unbindPreview()
+            cameraPreviewController.unbindPreview()
         }
     }
 }
@@ -90,7 +91,7 @@ fun HomeScreen(activity: MainActivity, navHostController: NavHostController) {
 @Composable
 fun PortraitScreen(
     viewModel: HomeViewModel,
-    previewController: PreviewController,
+    cameraPreviewController: CameraPreviewController,
     lifecycleOwner: LifecycleOwner
 ) {
     ConstraintLayout(
@@ -103,8 +104,7 @@ fun PortraitScreen(
         val scope = rememberCoroutineScope()
         val snackBarHostState = remember { SnackbarHostState() }
         val (preview, overlay, controlBtn, snackBar) = createRefs()
-        val faceOverlayController =
-            FaceOverlayController(viewModel, Configuration.ORIENTATION_PORTRAIT)
+        val faceOverlayController = FaceOverlayController(viewModel, ORIENTATION_PORTRAIT)
 
 
         AndroidView(
@@ -118,7 +118,7 @@ fun PortraitScreen(
                 },
             factory = {
                 PreviewView(it).apply {
-                    previewController.bindPreview(this, lifecycleOwner)
+                    cameraPreviewController.bindPreview(this, lifecycleOwner)
                 }
             }
         )
@@ -195,7 +195,7 @@ fun PortraitScreen(
                     .height(50.dp),
                 shape = RoundedCornerShape(50),
                 onClick = {
-                    previewController.switchCamera()
+                    cameraPreviewController.switchCamera()
                 }
             ) {
                 Icon(
@@ -211,7 +211,7 @@ fun PortraitScreen(
                 shape = RoundedCornerShape(50),
                 onClick = {
                     try {
-                        previewController.toggleFlashLight()
+                        cameraPreviewController.toggleFlashLight()
                     } catch (e: IllegalStateException) {
                         scope.launch {
                             snackBarHostState.showSnackbar(
@@ -245,7 +245,7 @@ fun PortraitScreen(
 @Composable
 fun LandscapeScreen(
     viewModel: HomeViewModel,
-    previewController: PreviewController,
+    cameraPreviewController: CameraPreviewController,
     lifecycleOwner: LifecycleOwner
 ) {
     ConstraintLayout(
@@ -258,8 +258,7 @@ fun LandscapeScreen(
         val scope = rememberCoroutineScope()
         val snackBarHostState = remember { SnackbarHostState() }
         val (preview, overlay, snackBar, controlBtn) = createRefs()
-        val faceOverlayController =
-            FaceOverlayController(viewModel, Configuration.ORIENTATION_PORTRAIT)
+        val faceOverlayController = FaceOverlayController(viewModel, ORIENTATION_LANDSCAPE)
 
 
         AndroidView(
@@ -272,7 +271,7 @@ fun LandscapeScreen(
                 },
             factory = {
                 PreviewView(it).apply {
-                    previewController.bindPreview(this, lifecycleOwner)
+                    cameraPreviewController.bindPreview(this, lifecycleOwner)
                 }
             }
         )
@@ -349,7 +348,7 @@ fun LandscapeScreen(
                     .height(50.dp),
                 shape = RoundedCornerShape(50),
                 onClick = {
-                    previewController.switchCamera()
+                    cameraPreviewController.switchCamera()
                 }
             ) {
                 Icon(
@@ -365,7 +364,7 @@ fun LandscapeScreen(
                 shape = RoundedCornerShape(50),
                 onClick = {
                     try {
-                        previewController.toggleFlashLight()
+                        cameraPreviewController.toggleFlashLight()
                     } catch (e: IllegalStateException) {
                         scope.launch {
                             snackBarHostState.showSnackbar(

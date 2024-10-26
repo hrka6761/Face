@@ -62,10 +62,9 @@ class HomeViewModel @Inject constructor(
                 .process(image)
                 .addOnSuccessListener { faces ->
                     _detectedFaces.value = faces
-                    Log.i(TAG, "${faces.map { it.boundingBox.width() }}")
                 }
                 .addOnFailureListener { e ->
-                    Log.i(TAG, "Fail: ${e.message}")
+                    Log.i(TAG, "Face detection ailed: ${e.message}")
                 }
                 .addOnCompleteListener {
                     imageProxy.close()

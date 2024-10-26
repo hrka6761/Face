@@ -17,9 +17,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 @SuppressLint("StaticFieldLeak", "WrongConstant")
-class PreviewController(
-    private val context: Context,
-    private val viewModel: HomeViewModel
+class CameraPreviewController(
+    private val viewModel: HomeViewModel,
+    private val context: Context
 ) {
 
     private lateinit var _previewView: PreviewView
@@ -96,23 +96,4 @@ class PreviewController(
         camera?.cameraControl?.enableTorch(false)
         viewModel.setFlashlightState(false)
     }
-}
-
-data class FaceOverlay(
-    val faceLeft: Float,
-    val faceTop: Float,
-    val faceWith: Float,
-    val faceHeight: Float,
-    val balanceCircles: BalanceCircles
-)
-
-data class BalanceCircles(
-    val horizontalBalanceCircleX: Float,
-    val horizontalBalanceCircleY: Float,
-    val verticalBalanceCircleX: Float,
-    val verticalBalanceCircleY: Float
-)
-
-enum class FaceGravity {
-    Left, Right, Top, Bottom
 }

@@ -18,11 +18,17 @@ class FaceOverlayController(
             balanceCircles = getBalanceCircles(face)
         )
 
+
     private fun getOverlayLeft(face: Face) =
         if (isImageFlipped())
-            viewModel.surfaceSize.value.first -
-                    face.boundingBox.centerX().toFloat() -
-                    (face.boundingBox.width().toFloat() / 2)
+            if (orientation == ORIENTATION_PORTRAIT)
+                viewModel.surfaceSize.value.first -
+                        face.boundingBox.centerX().toFloat() -
+                        (face.boundingBox.width().toFloat() / 2)
+            else
+                viewModel.surfaceSize.value.second -
+                        face.boundingBox.centerX().toFloat() -
+                        (face.boundingBox.width().toFloat() / 2)
         else
             face.boundingBox.centerX().toFloat() - (face.boundingBox.width()
                 .toFloat() / 2)
@@ -121,4 +127,24 @@ class FaceOverlayController(
     }
 
     private fun isImageFlipped() = viewModel.lensFacing.value == LENS_FACING_FRONT
+}
+
+
+data class FaceOverlay(
+    val faceLeft: Float,
+    val faceTop: Float,
+    val faceWith: Float,
+    val faceHeight: Float,
+    val balanceCircles: BalanceCircles
+)
+
+data class BalanceCircles(
+    val horizontalBalanceCircleX: Float,
+    val horizontalBalanceCircleY: Float,
+    val verticalBalanceCircleX: Float,
+    val verticalBalanceCircleY: Float
+)
+
+enum class FaceGravity {
+    Left, Right, Top, Bottom
 }
