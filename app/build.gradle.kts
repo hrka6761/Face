@@ -97,4 +97,11 @@ dependencies {
     implementation(libs.androidx.camera.video)
     implementation(libs.androidx.camera.view)
     implementation(libs.androidx.camera.extensions)
+
+    // Tensorflow
+    implementation(libs.tensorflow)
+    implementation(libs.litert.support.api)
+    configurations.all {
+        exclude(group = "com.google.ai.edge.litert", module = "litert-api")
+    }
 }
