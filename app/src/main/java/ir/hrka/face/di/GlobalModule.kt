@@ -1,6 +1,7 @@
 package ir.hrka.face.di
 
 import android.content.Context
+import android.content.res.AssetManager
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -12,6 +13,10 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import org.tensorflow.lite.Interpreter
+import java.io.FileInputStream
+import java.nio.MappedByteBuffer
+import java.nio.channels.FileChannel
 import javax.inject.Singleton
 
 @InstallIn(SingletonComponent::class)
@@ -46,4 +51,19 @@ class GlobalModule {
     @Provides
     @Singleton
     fun provideImageAnalysis(): ImageAnalysis = ImageAnalysis.Builder().build()
+
+    @Provides
+    @Singleton
+    fun provideInterpreter(@ApplicationContext context: Context): Interpreter =
+        Interpreter(loadModelFile(context.assets))
+
+
+    private fun loadModelFile(assetManager: AssetManager): MappedByteBuffer {
+        val fileDescriptor = assetManager.openFd("mobilefacenet.tflite")
+        val inputStream = FileInputStream(fileDescriptor.fileDescriptor)
+        val fileChannel = inputStream.channel
+        val startOffset = fileDescriptor.startOffset
+        val declaredLength = fileDescriptor.declaredLength
+        return fileChannel.map(FileChannel.MapMode.READ_ONLY, startOffset, declaredLength)
+    }
 }
