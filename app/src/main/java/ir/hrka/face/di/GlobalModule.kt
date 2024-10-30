@@ -13,7 +13,12 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import ir.hrka.face.core.utilities.Constants.FACE_NET_INPUT_IMAGE_SIZE
+import ir.hrka.face.core.utilities.Constants.FACE_NET_MODEL_NAME
 import org.tensorflow.lite.Interpreter
+import org.tensorflow.lite.support.common.ops.NormalizeOp
+import org.tensorflow.lite.support.image.ImageProcessor
+import org.tensorflow.lite.support.image.ops.ResizeOp
 import java.io.FileInputStream
 import java.nio.MappedByteBuffer
 import java.nio.channels.FileChannel
@@ -55,11 +60,26 @@ class GlobalModule {
     @Provides
     @Singleton
     fun provideInterpreter(@ApplicationContext context: Context): Interpreter =
-        Interpreter(loadModelFile(context.assets))
+        Interpreter(loadModelFile(context.assets), Interpreter.Options())
+
+    @Provides
+    @Singleton
+    fun provideImageProcessor(): ImageProcessor =
+        ImageProcessor
+            .Builder()
+            .add(
+                ResizeOp(
+                    FACE_NET_INPUT_IMAGE_SIZE,
+                    FACE_NET_INPUT_IMAGE_SIZE,
+                    ResizeOp.ResizeMethod.BILINEAR
+                )
+            )
+            .add(NormalizeOp(0f, 255f))
+            .build()
 
 
     private fun loadModelFile(assetManager: AssetManager): MappedByteBuffer {
-        val fileDescriptor = assetManager.openFd("mobilefacenet.tflite")
+        val fileDescriptor = assetManager.openFd(FACE_NET_MODEL_NAME)
         val inputStream = FileInputStream(fileDescriptor.fileDescriptor)
         val fileChannel = inputStream.channel
         val startOffset = fileDescriptor.startOffset
