@@ -8,7 +8,7 @@ plugins {
 
 android {
     namespace = "ir.hrka.face"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "ir.hrka.face"
