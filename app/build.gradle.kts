@@ -8,7 +8,7 @@ plugins {
 
 android {
     namespace = "ir.hrka.face"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "ir.hrka.face"
@@ -101,7 +101,4 @@ dependencies {
     // Tensorflow
     implementation(libs.tensorflow)
     implementation(libs.litert.support.api)
-    configurations.all {
-        exclude(group = "com.google.ai.edge.litert", module = "litert-api")
-    }
 }
