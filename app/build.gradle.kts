@@ -1,9 +1,11 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
-    alias(libs.plugins.jetbrainsKotlinKapt)
     alias(libs.plugins.daggerHiltAndroid)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.ksp.devtool)
 }
 
 android {
@@ -13,7 +15,7 @@ android {
     defaultConfig {
         applicationId = "ir.hrka.face"
         minSdk = 31
-        targetSdk = 34
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0"
 
@@ -33,17 +35,16 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
     }
-    kotlinOptions {
-        jvmTarget = "1.8"
+    kotlin {
+        compilerOptions {
+            jvmTarget.set(JvmTarget.JVM_11)
+        }
     }
     buildFeatures {
         compose = true
-    }
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.1"
     }
     packaging {
         resources {
@@ -70,19 +71,16 @@ dependencies {
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
 
-    // Kapt
-    kapt(libs.hilt.android.compiler)
-
     // Hilt
     implementation(libs.hilt.android)
-    implementation(libs.androidx.hilt.navigation.compose)
+    ksp(libs.hilt.android.compiler)
 
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
 
     // Navigation
     implementation(libs.navigation.compose)
-    implementation(libs.compose.ui)
+    implementation(libs.androidx.hilt.navigation.compose)
 
     // Constraintlayout
     implementation(libs.constraintlayout.compose)
