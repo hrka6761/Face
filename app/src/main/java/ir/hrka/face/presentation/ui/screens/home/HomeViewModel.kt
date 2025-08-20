@@ -15,9 +15,11 @@ import com.google.mlkit.vision.face.Face
 import com.google.mlkit.vision.face.FaceDetector
 import dagger.hilt.android.lifecycle.HiltViewModel
 import ir.hrka.face.core.utilities.Constants.TAG
+import ir.hrka.face.core.utilities.FaceEmbeddingGenerator
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import javax.inject.Inject
+import kotlin.math.sqrt
 
 @SuppressLint("StaticFieldLeak", "WrongConstant")
 @HiltViewModel
@@ -26,6 +28,7 @@ class HomeViewModel @Inject constructor(
     val cameraProvider: ProcessCameraProvider,
     val preview: Preview,
     val imageAnalysis: ImageAnalysis,
+    private val faceEmbeddingGenerator: FaceEmbeddingGenerator
 ) : ViewModel() {
 
     private val _flashLightState: MutableStateFlow<Boolean> = MutableStateFlow(false)
@@ -37,7 +40,7 @@ class HomeViewModel @Inject constructor(
     private val _surfaceSize: MutableStateFlow<Pair<Float, Float>> =
         MutableStateFlow(Pair(480f, 640f))
     val surfaceSize: StateFlow<Pair<Float, Float>> = _surfaceSize
-
+    private lateinit var hamidrezaEmbeddings: DoubleArray
 
     fun setFlashlightState(state: Boolean) {
         _flashLightState.value = state
@@ -62,6 +65,24 @@ class HomeViewModel @Inject constructor(
                 .process(image)
                 .addOnSuccessListener { faces ->
                     _detectedFaces.value = faces
+                    if (faces.isNotEmpty()) {
+                        val embeddings = faceEmbeddingGenerator.generate(
+                            imageProxy = imageProxy,
+                            boundingBox = faces[0].boundingBox
+                        )
+
+                        embeddings?.get(0)?.let {
+                            val emb =  it.map { i -> i.toDouble() }.toDoubleArray()
+                            if (!this::hamidrezaEmbeddings.isInitialized) {
+                                hamidrezaEmbeddings =emb
+                                Log.i(TAG, "hamidrezaEmbeddings -> ${hamidrezaEmbeddings.contentToString()}")
+                            }else {
+//                                Log.i(TAG, "embeddings -> ${emb.contentToString()}")
+                                val res = (cosineSimilarity(emb, hamidrezaEmbeddings) * 100).toInt()
+                                if (res >= 90) Log.i(TAG, "result: $res")
+                            }
+                        }
+                    }
                 }
                 .addOnFailureListener { e ->
                     Log.i(TAG, "Face detection ailed: ${e.message}")
@@ -69,6 +90,26 @@ class HomeViewModel @Inject constructor(
                 .addOnCompleteListener {
                     imageProxy.close()
                 }
+        }
+    }
+
+    fun cosineSimilarity(a: DoubleArray, b: DoubleArray): Double {
+        require(a.size == b.size) { "Vectors must have the same size" }
+
+        var dot = 0.0
+        var normA = 0.0
+        var normB = 0.0
+
+        for (i in a.indices) {
+            dot += a[i] * b[i]
+            normA += a[i] * a[i]
+            normB += b[i] * b[i]
+        }
+
+        return if (normA == 0.0 || normB == 0.0) {
+            0.0 // avoid division by zero
+        } else {
+            dot / (kotlin.math.sqrt(normA) * kotlin.math.sqrt(normB))
         }
     }
 }
