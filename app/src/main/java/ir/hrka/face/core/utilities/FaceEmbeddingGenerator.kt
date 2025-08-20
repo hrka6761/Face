@@ -13,6 +13,7 @@ import org.tensorflow.lite.support.image.ImageProcessor
 import org.tensorflow.lite.support.image.TensorImage
 import java.io.ByteArrayOutputStream
 import javax.inject.Inject
+import androidx.core.graphics.scale
 
 class FaceEmbeddingGenerator @Inject constructor(
     private val interpreter: Interpreter,
@@ -90,7 +91,7 @@ class FaceEmbeddingGenerator @Inject constructor(
         val x = boundingBox.left
         val y = boundingBox.top
         val with = boundingBox.width()
-        val height = boundingBox.width()
+        val height = boundingBox.height()
 
         if (x < 0 || y < 0)
             return null
@@ -105,10 +106,5 @@ class FaceEmbeddingGenerator @Inject constructor(
     }
 
     private fun resizeFaceBitmapToFaceNetInputSize(originalBitmap: Bitmap): Bitmap =
-        Bitmap.createScaledBitmap(
-            originalBitmap,
-            FACE_NET_INPUT_IMAGE_SIZE,
-            FACE_NET_INPUT_IMAGE_SIZE,
-            false
-        )
+        originalBitmap.scale(FACE_NET_INPUT_IMAGE_SIZE, FACE_NET_INPUT_IMAGE_SIZE, false)
 }
