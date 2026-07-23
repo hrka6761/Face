@@ -15,14 +15,20 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import ir.hrka.face.camera.impl.EnrollPoseStep
 
 /**
- * Dialog that collects a person name and shows multi-sample registration progress.
+ * Dialog that collects a person name and guides multi-pose registration progress.
  *
  * @param isEnrolling Whether sample collection / save is in progress.
  * @param enrollProgress Number of templates collected so far.
- * @param enrollTargetCount Desired template count.
+ * @param enrollTargetCount Desired template count across all poses.
+ * @param enrollStep Active guided pose step.
+ * @param enrollStepProgress Samples collected for the current pose.
+ * @param enrollStepTarget Samples required for the current pose.
+ * @param enrollHint Live guidance for head pose.
  * @param onDismiss Called when the dialog is cancelled.
  * @param onConfirm Called with the trimmed name when the user confirms.
  */
@@ -31,6 +37,10 @@ fun EnrollPersonDialog(
     isEnrolling: Boolean,
     enrollProgress: Int,
     enrollTargetCount: Int,
+    enrollStep: EnrollPoseStep?,
+    enrollStepProgress: Int,
+    enrollStepTarget: Int,
+    enrollHint: String,
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit,
 ) {
@@ -38,16 +48,36 @@ fun EnrollPersonDialog(
     val canSave = name.trim().isNotEmpty() && !isEnrolling
 
     AlertDialog(
-        onDismissRequest = { if (!isEnrolling) onDismiss() },
-        title = { Text(if (isEnrolling) "Capturing face samples" else "Register identity") },
+        onDismissRequest = { onDismiss() },
+        title = {
+            Text(
+                if (isEnrolling) {
+                    enrollStep?.title ?: "Capturing face samples"
+                } else {
+                    "Register identity"
+                },
+            )
+        },
         text = {
             Column(modifier = Modifier.fillMaxWidth()) {
                 if (isEnrolling) {
                     Text(
-                        "Hold still and slowly move a little closer/farther. " +
-                            "Collecting templates improves recognition at any distance.",
+                        text = enrollStep?.instruction ?: "Follow the on-screen pose guides.",
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(enrollHint.ifBlank { "Hold still…" })
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text("This step: $enrollStepProgress / $enrollStepTarget")
+                    LinearProgressIndicator(
+                        progress = {
+                            if (enrollStepTarget <= 0) 0f
+                            else (enrollStepProgress.toFloat() / enrollStepTarget).coerceIn(0f, 1f)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
                     )
                     Spacer(modifier = Modifier.height(12.dp))
+                    Text("Overall: $enrollProgress / $enrollTargetCount")
                     LinearProgressIndicator(
                         progress = {
                             if (enrollTargetCount <= 0) 0f
@@ -56,11 +86,17 @@ fun EnrollPersonDialog(
                         modifier = Modifier.fillMaxWidth(),
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text("Samples: $enrollProgress / $enrollTargetCount")
+                    Text(
+                        "Steps: full face → left profile → right profile. " +
+                            "Samples are saved only when your head angle is correct.",
+                    )
                 } else {
                     Text(
-                        "After you tap Register, keep your face in the frame for ~2 seconds " +
-                            "while the app captures multiple samples.",
+                        "You will be guided through three poses:\n" +
+                            "1) Full face (look straight)\n" +
+                            "2) Left profile\n" +
+                            "3) Right profile\n\n" +
+                            "Keep your face inside the frame and follow each instruction carefully.",
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     OutlinedTextField(
@@ -80,16 +116,15 @@ fun EnrollPersonDialog(
                     onClick = { onConfirm(name.trim()) },
                     enabled = canSave,
                 ) {
-                    Text("Register")
+                    Text("Start")
                 }
             }
         },
         dismissButton = {
             TextButton(
                 onClick = onDismiss,
-                enabled = !isEnrolling,
             ) {
-                Text("Cancel")
+                Text(if (isEnrolling) "Abort" else "Cancel")
             }
         },
     )

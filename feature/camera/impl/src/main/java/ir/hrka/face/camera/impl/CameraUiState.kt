@@ -12,6 +12,7 @@ import ir.hrka.face.model.Person
  * @property person Matched identity when known; `null` when unknown.
  * @property embedding Latest robust embedding (used while collecting enrollment samples).
  * @property similarity Match score when [person] is non-null.
+ * @property headEulerAngleY Head yaw in degrees when provided by the detector.
  */
 data class TrackedFaceUi(
     val trackingId: Int,
@@ -19,6 +20,7 @@ data class TrackedFaceUi(
     val person: Person?,
     val embedding: FaceEmbedding?,
     val similarity: Float,
+    val headEulerAngleY: Float? = null,
 )
 
 /**
@@ -35,6 +37,10 @@ data class TrackedFaceUi(
  * @property isEnrolling Whether an enroll operation is in progress.
  * @property enrollProgress Collected enrollment templates so far.
  * @property enrollTargetCount Desired number of enrollment templates.
+ * @property enrollStep Active guided pose step while enrolling.
+ * @property enrollStepProgress Samples collected for the current pose step.
+ * @property enrollStepTarget Samples required for the current pose step.
+ * @property enrollHint Live guidance text for the current pose / yaw.
  */
 data class CameraUiState(
     val mode: CameraMode = CameraMode.Recognition,
@@ -48,6 +54,10 @@ data class CameraUiState(
     val isEnrolling: Boolean = false,
     val enrollProgress: Int = 0,
     val enrollTargetCount: Int = 12,
+    val enrollStep: EnrollPoseStep? = null,
+    val enrollStepProgress: Int = 0,
+    val enrollStepTarget: Int = 4,
+    val enrollHint: String = "",
 ) {
     /** Number of faces currently on screen. */
     val faceCount: Int get() = faces.size

@@ -6,9 +6,9 @@ import ir.hrka.face.model.FaceMatchResult
 import ir.hrka.face.model.Person
 import ir.hrka.face.recognition.api.FaceMatcher
 
-
 /**
- * [FaceMatcher] implementation using cosine similarity with max-over-gallery scoring.
+ * [FaceMatcher] implementation using cosine similarity with max-over-gallery scoring
+ * and a best-vs-second-best margin to reject ambiguous identities.
  */
 internal class CosineFaceMatcher : FaceMatcher {
 
@@ -16,6 +16,7 @@ internal class CosineFaceMatcher : FaceMatcher {
         query: FaceEmbedding,
         enrolled: List<EnrolledFace>,
         threshold: Float,
+        margin: Float,
     ): FaceMatchResult {
         if (enrolled.isEmpty()) {
             return FaceMatchResult(person = null, similarity = 0f)
@@ -24,6 +25,7 @@ internal class CosineFaceMatcher : FaceMatcher {
         val byPerson = enrolled.groupBy { it.person.id }
         var bestPerson: Person? = null
         var bestScore = Float.NEGATIVE_INFINITY
+        var secondBest = Float.NEGATIVE_INFINITY
 
         for ((_, templates) in byPerson) {
             var personBest = Float.NEGATIVE_INFINITY
@@ -33,12 +35,18 @@ internal class CosineFaceMatcher : FaceMatcher {
                 if (score > personBest) personBest = score
             }
             if (personBest > bestScore) {
+                secondBest = bestScore
                 bestScore = personBest
                 bestPerson = person
+            } else if (personBest > secondBest) {
+                secondBest = personBest
             }
         }
 
-        return if (bestScore >= threshold) {
+        val accepted = bestScore >= threshold &&
+            (secondBest == Float.NEGATIVE_INFINITY || bestScore - secondBest >= margin)
+
+        return if (accepted) {
             FaceMatchResult(person = bestPerson, similarity = bestScore)
         } else {
             FaceMatchResult(person = null, similarity = bestScore.coerceAtLeast(0f))
@@ -49,6 +57,7 @@ internal class CosineFaceMatcher : FaceMatcher {
         queries: Map<Int, FaceEmbedding>,
         enrolled: List<EnrolledFace>,
         threshold: Float,
+        margin: Float,
     ): Map<Int, FaceMatchResult> =
-        queries.mapValues { (_, embedding) -> match(embedding, enrolled, threshold) }
+        queries.mapValues { (_, embedding) -> match(embedding, enrolled, threshold, margin) }
 }

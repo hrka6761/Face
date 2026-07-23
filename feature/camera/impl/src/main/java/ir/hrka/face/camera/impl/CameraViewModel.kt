@@ -69,6 +69,9 @@ class CameraViewModel @Inject constructor(
     private var enrollTrackingId: Int? = null
     private var enrollName: String? = null
     private var enrollStartedAtMs: Long = 0L
+    private var enrollStep: EnrollPoseStep = EnrollPoseStep.FIRST
+    private var enrollStepCount: Int = 0
+    private var lastEnrollSampleAtMs: Long = 0L
 
     private val _uiState = MutableStateFlow(CameraUiState())
     val uiState: StateFlow<CameraUiState> = _uiState.asStateFlow()
@@ -240,7 +243,7 @@ class CameraViewModel @Inject constructor(
         matches: Map<Int, FaceMatchResult>,
     ) {
         // Box-only publishes (empty matches) happen before embedding finishes.
-        // Preserve prior identity so attendance / labels do not flash every frame.
+        // Preserve prior identity so register / labels do not flash every frame.
         val boxOnlyUpdate = matches.isEmpty() && embeddings.isEmpty()
         val previousById = _uiState.value.faces.associateBy { it.trackingId }
 
@@ -262,6 +265,7 @@ class CameraViewModel @Inject constructor(
                 } else {
                     raw?.similarity ?: 0f
                 },
+                headEulerAngleY = face.headEulerAngleY ?: previous?.headEulerAngleY,
             )
         }
 
@@ -288,38 +292,88 @@ class CameraViewModel @Inject constructor(
         if (bitmap.isRecycled) return
 
         val face = faces.firstOrNull { it.trackingId == trackingId } ?: return
+        val yaw = face.headEulerAngleY
+        val isFront = _uiState.value.isFrontCamera
+        val step = enrollStep
+        val poseOk = yaw != null && EnrollPoseGate.matches(step, yaw, isFront)
+        val hint = EnrollPoseGate.hint(step, yaw, isFront)
 
-        val multi = withContext(Dispatchers.Default) {
-            runCatching { embedder.embedMultiScale(bitmap, face) }.getOrDefault(emptyList())
+        _uiState.update {
+            it.copy(
+                enrollStep = step,
+                enrollStepProgress = enrollStepCount,
+                enrollStepTarget = FaceRecognitionConfig.ENROLL_SAMPLES_PER_POSE,
+                enrollHint = hint,
+                enrollProgress = synchronized(enrollSamples) { enrollSamples.size },
+                enrollTargetCount = FaceRecognitionConfig.ENROLL_TARGET_TEMPLATES,
+            )
         }
-        val toAdd = if (multi.isNotEmpty()) multi else listOfNotNull(embeddings[trackingId])
-        if (toAdd.isEmpty()) return
 
-        val count = synchronized(enrollSamples) {
-            enrollSamples += toAdd
-            enrollSamples.size
+        if (!poseOk) return
+
+        val now = System.currentTimeMillis()
+        // Space samples so each pose gathers diverse frames, not near-duplicates.
+        if (now - lastEnrollSampleAtMs < SAMPLE_INTERVAL_MS) return
+
+        val robust = withContext(Dispatchers.Default) {
+            runCatching { embedder.embedRobust(bitmap, face) }.getOrNull()
+        } ?: embeddings[trackingId] ?: return
+
+        lastEnrollSampleAtMs = now
+        val stepDone: Boolean
+        val allDone: Boolean
+        synchronized(enrollSamples) {
+            enrollSamples += robust
+            enrollStepCount += 1
+            stepDone = enrollStepCount >= FaceRecognitionConfig.ENROLL_SAMPLES_PER_POSE
+            if (stepDone) {
+                val next = step.next()
+                if (next != null) {
+                    enrollStep = next
+                    enrollStepCount = 0
+                    allDone = false
+                } else {
+                    allDone = true
+                }
+            } else {
+                allDone = false
+            }
         }
 
-        val timedOut =
-            System.currentTimeMillis() - enrollStartedAtMs >= FaceRecognitionConfig.ENROLL_TIMEOUT_MS
-        val enough = count >= FaceRecognitionConfig.ENROLL_TARGET_TEMPLATES
+        _uiState.update {
+            it.copy(
+                enrollStep = enrollStep,
+                enrollStepProgress = enrollStepCount,
+                enrollStepTarget = FaceRecognitionConfig.ENROLL_SAMPLES_PER_POSE,
+                enrollHint = if (allDone) {
+                    "All poses captured — saving…"
+                } else if (stepDone) {
+                    enrollStep.instruction
+                } else {
+                    hint
+                },
+                enrollProgress = synchronized(enrollSamples) { enrollSamples.size },
+                enrollTargetCount = FaceRecognitionConfig.ENROLL_TARGET_TEMPLATES,
+            )
+        }
 
-        if (enough || timedOut) {
+        if (allDone) {
             finishEnrollment(name)
-        } else {
-            _uiState.update { it.copy(enrollProgress = count) }
         }
     }
 
     private suspend fun finishEnrollment(name: String) {
         val samples = synchronized(enrollSamples) { enrollSamples.toList() }
-        if (samples.isEmpty()) {
+        val minRequired = FaceRecognitionConfig.ENROLL_TARGET_TEMPLATES
+        if (samples.size < minRequired) {
             _uiState.update {
                 it.copy(
                     isEnrolling = false,
                     enrollTarget = null,
                     enrollProgress = 0,
-                    errorMessage = "Could not capture face samples — try again closer to the camera",
+                    enrollStep = null,
+                    enrollHint = "",
+                    errorMessage = "Registration incomplete — capture full face and both profiles",
                 )
             }
             clearEnrollmentSession()
@@ -333,6 +387,8 @@ class CameraViewModel @Inject constructor(
                     enrollTarget = null,
                     isEnrolling = false,
                     enrollProgress = 0,
+                    enrollStep = null,
+                    enrollHint = "",
                     errorMessage = null,
                 )
             }
@@ -356,6 +412,9 @@ class CameraViewModel @Inject constructor(
         enrollTrackingId = null
         enrollName = null
         enrollStartedAtMs = 0L
+        enrollStep = EnrollPoseStep.FIRST
+        enrollStepCount = 0
+        lastEnrollSampleAtMs = 0L
         synchronized(enrollSamples) { enrollSamples.clear() }
     }
 
@@ -378,12 +437,8 @@ class CameraViewModel @Inject constructor(
         return if (best != null && best.value >= VOTE_MIN) {
             votes.firstOrNull { it?.id == best.key } ?: candidate
         } else {
-            val recentKnown = votes.asReversed().firstOrNull { it != null }
-            if (candidate == null && recentKnown != null) {
-                recentKnown
-            } else {
-                candidate
-            }
+            // Do not sticky-hold identities below the vote threshold — avoids false IDs.
+            null
         }
     }
 
@@ -398,7 +453,7 @@ class CameraViewModel @Inject constructor(
     }
 
     /**
-     * Switches between recognition and attendance modes.
+     * Switches between recognition and register modes.
      * Clears any in-progress enrollment when the mode changes.
      */
     fun setMode(mode: CameraMode) {
@@ -411,22 +466,29 @@ class CameraViewModel @Inject constructor(
                 enrollTarget = null,
                 isEnrolling = false,
                 enrollProgress = 0,
+                enrollStep = null,
+                enrollStepProgress = 0,
+                enrollHint = "",
             )
         }
     }
 
     /**
      * Opens the enrollment dialog for an unknown face.
-     * Only valid in [CameraMode.Attendance].
+     * Only valid in [CameraMode.Register].
      */
     fun requestEnroll(face: TrackedFaceUi) {
-        if (_uiState.value.mode != CameraMode.Attendance) return
+        if (_uiState.value.mode != CameraMode.Register) return
         if (face.person != null) return
         _uiState.update {
             it.copy(
                 enrollTarget = face,
                 enrollProgress = 0,
                 enrollTargetCount = FaceRecognitionConfig.ENROLL_TARGET_TEMPLATES,
+                enrollStep = EnrollPoseStep.FIRST,
+                enrollStepProgress = 0,
+                enrollStepTarget = FaceRecognitionConfig.ENROLL_SAMPLES_PER_POSE,
+                enrollHint = EnrollPoseStep.FIRST.instruction,
             )
         }
     }
@@ -434,7 +496,14 @@ class CameraViewModel @Inject constructor(
     fun dismissEnroll() {
         clearEnrollmentSession()
         _uiState.update {
-            it.copy(enrollTarget = null, isEnrolling = false, enrollProgress = 0)
+            it.copy(
+                enrollTarget = null,
+                isEnrolling = false,
+                enrollProgress = 0,
+                enrollStep = null,
+                enrollStepProgress = 0,
+                enrollHint = "",
+            )
         }
     }
 
@@ -443,15 +512,19 @@ class CameraViewModel @Inject constructor(
         enrollTrackingId = target.trackingId
         enrollName = name.trim()
         enrollStartedAtMs = System.currentTimeMillis()
-        synchronized(enrollSamples) {
-            enrollSamples.clear()
-            target.embedding?.let { enrollSamples += it }
-        }
+        enrollStep = EnrollPoseStep.FIRST
+        enrollStepCount = 0
+        lastEnrollSampleAtMs = 0L
+        synchronized(enrollSamples) { enrollSamples.clear() }
         _uiState.update {
             it.copy(
                 isEnrolling = true,
-                enrollProgress = synchronized(enrollSamples) { enrollSamples.size },
+                enrollProgress = 0,
                 enrollTargetCount = FaceRecognitionConfig.ENROLL_TARGET_TEMPLATES,
+                enrollStep = EnrollPoseStep.FIRST,
+                enrollStepProgress = 0,
+                enrollStepTarget = FaceRecognitionConfig.ENROLL_SAMPLES_PER_POSE,
+                enrollHint = EnrollPoseStep.FIRST.instruction,
             )
         }
     }
@@ -476,8 +549,9 @@ class CameraViewModel @Inject constructor(
 
     companion object {
         private const val TAG = "FaceCameraVM"
-        private const val VOTE_WINDOW = 5
-        private const val VOTE_MIN = 2
+        private const val VOTE_WINDOW = 7
+        private const val VOTE_MIN = 3
+        private const val SAMPLE_INTERVAL_MS = 350L
     }
 }
 

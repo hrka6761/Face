@@ -53,6 +53,7 @@ class EmbeddingMathTest {
             query = FaceEmbedding(EmbeddingMath.l2Normalize(floatArrayOf(0.95f, 0.05f, 0f))),
             enrolled = enrolled,
             threshold = 0.55f,
+            margin = 0f,
         )
 
         assertEquals("Ada", result.person?.name)
@@ -70,6 +71,27 @@ class EmbeddingMathTest {
             query = FaceEmbedding(EmbeddingMath.l2Normalize(floatArrayOf(0f, 1f, 0f))),
             enrolled = enrolled,
             threshold = 0.55f,
+            margin = 0f,
+        )
+
+        assertNull(result.person)
+    }
+
+    @Test
+    fun matcher_rejectsAmbiguousMatch_whenMarginNotMet() {
+        val ada = Person("id-1", "Ada", 0L, 0L)
+        val bob = Person("id-2", "Bob", 0L, 0L)
+        val enrolled = listOf(
+            EnrolledFace(ada, FaceEmbedding(EmbeddingMath.l2Normalize(floatArrayOf(1f, 0f, 0f)))),
+            EnrolledFace(bob, FaceEmbedding(EmbeddingMath.l2Normalize(floatArrayOf(0.9f, 0.1f, 0f)))),
+        )
+        val matcher = CosineFaceMatcher()
+
+        val result = matcher.match(
+            query = FaceEmbedding(EmbeddingMath.l2Normalize(floatArrayOf(0.95f, 0.05f, 0f))),
+            enrolled = enrolled,
+            threshold = 0.5f,
+            margin = 0.2f,
         )
 
         assertNull(result.person)

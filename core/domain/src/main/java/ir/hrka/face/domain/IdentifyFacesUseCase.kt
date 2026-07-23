@@ -11,8 +11,8 @@ import kotlin.math.sqrt
  * Identifies faces by comparing query embeddings against enrolled identity templates.
  *
  * For each enrolled person, the **maximum** cosine similarity across all of that person's
- * stored templates is used. This is the standard multi-gallery approach that makes
- * recognition robust to distance and slight pose changes.
+ * stored templates is used. A match is accepted only when the best score clears
+ * [threshold] and beats the second-best person by at least [margin].
  *
  * @property personRepository Source of enrolled embeddings.
  */
@@ -21,15 +21,18 @@ class IdentifyFacesUseCase @Inject constructor(
 ) {
 
     /**
-     * Matches each query embedding to the best enrolled person when above [threshold].
+     * Matches each query embedding to the best enrolled person when above [threshold]
+     * and [margin].
      *
      * @param embeddings Map of tracking id → query embedding.
      * @param threshold Minimum cosine similarity required for a positive match.
+     * @param margin Minimum gap between best and second-best person scores.
      * @return Map of tracking id → [FaceMatchResult].
      */
     suspend operator fun invoke(
         embeddings: Map<Int, FaceEmbedding>,
         threshold: Float = DEFAULT_THRESHOLD,
+        margin: Float = DEFAULT_MARGIN,
     ): Map<Int, FaceMatchResult> {
         if (embeddings.isEmpty()) return emptyMap()
 
@@ -43,6 +46,7 @@ class IdentifyFacesUseCase @Inject constructor(
         return embeddings.mapValues { (_, query) ->
             var bestPerson: Person? = null
             var bestScore = Float.NEGATIVE_INFINITY
+            var secondBest = Float.NEGATIVE_INFINITY
 
             for ((_, templates) in byPerson) {
                 var personBest = Float.NEGATIVE_INFINITY
@@ -52,12 +56,18 @@ class IdentifyFacesUseCase @Inject constructor(
                     if (score > personBest) personBest = score
                 }
                 if (personBest > bestScore) {
+                    secondBest = bestScore
                     bestScore = personBest
                     bestPerson = person
+                } else if (personBest > secondBest) {
+                    secondBest = personBest
                 }
             }
 
-            if (bestScore >= threshold) {
+            val accepted = bestScore >= threshold &&
+                (secondBest == Float.NEGATIVE_INFINITY || bestScore - secondBest >= margin)
+
+            if (accepted) {
                 FaceMatchResult(person = bestPerson, similarity = bestScore)
             } else {
                 FaceMatchResult(person = null, similarity = bestScore.coerceAtLeast(0f))
@@ -83,9 +93,15 @@ class IdentifyFacesUseCase @Inject constructor(
 
     companion object {
         /**
-         * Cosine threshold tuned for multi-template MobileFaceNet galleries.
-         * Prefer recall across distance changes; raise if false accepts appear.
+         * Cosine threshold for multi-pose MobileFaceNet galleries.
+         * Keep in sync with [ir.hrka.face.recognition.api.FaceRecognitionConfig.DEFAULT_MATCH_THRESHOLD].
          */
-        const val DEFAULT_THRESHOLD: Float = 0.55f
+        const val DEFAULT_THRESHOLD: Float = 0.68f
+
+        /**
+         * Best-vs-second-best margin to reject ambiguous identities.
+         * Keep in sync with [ir.hrka.face.recognition.api.FaceRecognitionConfig.DEFAULT_MATCH_MARGIN].
+         */
+        const val DEFAULT_MARGIN: Float = 0.08f
     }
 }

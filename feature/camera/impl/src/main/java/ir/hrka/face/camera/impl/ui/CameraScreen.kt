@@ -4,6 +4,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -42,7 +43,7 @@ import ir.hrka.face.camera.impl.CameraViewModel
 import kotlinx.coroutines.launch
 
 /**
- * Fullscreen camera screen with recognition and attendance modes.
+ * Fullscreen camera screen with recognition and register modes.
  *
  * @param viewModel Camera feature ViewModel.
  */
@@ -116,8 +117,8 @@ fun CameraScreen(
                     )
                 }
 
-                CameraMode.Attendance -> {
-                    AttendanceOverlay(
+                CameraMode.Register -> {
+                    RegisterOverlay(
                         faces = uiState.faces,
                         imageWidth = uiState.imageWidth,
                         imageHeight = uiState.imageHeight,
@@ -128,30 +129,31 @@ fun CameraScreen(
                 }
             }
 
-            ModeSwitcher(
-                mode = uiState.mode,
-                onModeChange = viewModel::setMode,
+            Column(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .statusBarsPadding()
                     .padding(top = 12.dp),
-            )
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                ModeSwitcher(
+                    mode = uiState.mode,
+                    onModeChange = viewModel::setMode,
+                )
 
-            if (uiState.mode == CameraMode.Recognition) {
-                Surface(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .statusBarsPadding()
-                        .padding(top = 64.dp),
-                    color = Color.Black.copy(alpha = 0.55f),
-                    shape = MaterialTheme.shapes.medium,
-                ) {
-                    Text(
-                        text = "Faces: ${uiState.faceCount}",
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                        color = Color.White,
-                        style = MaterialTheme.typography.titleMedium,
-                    )
+                if (uiState.mode == CameraMode.Recognition) {
+                    Surface(
+                        modifier = Modifier.padding(top = 4.dp),
+                        color = Color.Black.copy(alpha = 0.55f),
+                        shape = MaterialTheme.shapes.medium,
+                    ) {
+                        Text(
+                            text = "Faces: ${uiState.faceCount}",
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                            color = Color.White,
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                    }
                 }
             }
 
@@ -193,6 +195,10 @@ fun CameraScreen(
             isEnrolling = uiState.isEnrolling,
             enrollProgress = uiState.enrollProgress,
             enrollTargetCount = uiState.enrollTargetCount,
+            enrollStep = uiState.enrollStep,
+            enrollStepProgress = uiState.enrollStepProgress,
+            enrollStepTarget = uiState.enrollStepTarget,
+            enrollHint = uiState.enrollHint,
             onDismiss = viewModel::dismissEnroll,
             onConfirm = viewModel::confirmEnroll,
         )
@@ -205,7 +211,7 @@ private fun ModeSwitcher(
     onModeChange: (CameraMode) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val options = listOf(CameraMode.Recognition, CameraMode.Attendance)
+    val options = listOf(CameraMode.Recognition, CameraMode.Register)
     Surface(
         modifier = modifier,
         color = Color.Black.copy(alpha = 0.55f),
@@ -232,7 +238,7 @@ private fun ModeSwitcher(
                     Text(
                         text = when (option) {
                             CameraMode.Recognition -> "Recognize"
-                            CameraMode.Attendance -> "Attendance"
+                            CameraMode.Register -> "Register"
                         },
                     )
                 }

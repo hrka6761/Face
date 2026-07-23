@@ -81,7 +81,7 @@ internal class DefaultPersonRepository @Inject constructor(
         val kept = ArrayList<FaceEmbedding>(embeddings.size)
         for (candidate in embeddings) {
             val tooSimilar = kept.any { existing ->
-                cosine(existing.values, candidate.values) >= 0.98f
+                cosine(existing.values, candidate.values) >= 0.96f
             }
             if (!tooSimilar) {
                 kept += candidate

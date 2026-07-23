@@ -44,14 +44,14 @@ import kotlin.math.abs
 import kotlinx.coroutines.delay
 
 /**
- * Stable attendance readout shown under the guide frame.
+ * Stable register readout shown under the guide frame.
  *
  * @property trackingId Detector tracking id when a live face is aligned.
  * @property person Matched identity when known.
  * @property similarityPercent Match score rounded to whole percent.
  * @property registerFace Live unknown face used for registration, if any.
  */
-private data class AttendanceDisplay(
+private data class RegisterDisplay(
     val trackingId: Int,
     val person: Person?,
     val similarityPercent: Int,
@@ -59,7 +59,7 @@ private data class AttendanceDisplay(
 )
 
 /**
- * Attendance-mode overlay: fixed center guide frame, register action, and person details.
+ * Register-mode overlay: fixed center guide frame, register action, and person details.
  *
  * - Red frame when no face is aligned, or the aligned face is unknown.
  * - Green frame when a known enrolled person is aligned in the guide.
@@ -76,7 +76,7 @@ private data class AttendanceDisplay(
  * @param modifier Optional modifier.
  */
 @Composable
-fun AttendanceOverlay(
+fun RegisterOverlay(
     faces: List<TrackedFaceUi>,
     imageWidth: Int,
     imageHeight: Int,
@@ -91,7 +91,7 @@ fun AttendanceOverlay(
         if (viewWidth <= 0 || viewHeight <= 0) {
             RectF()
         } else {
-            AttendanceGuide.guideRectInView(viewWidth.toFloat(), viewHeight.toFloat())
+            RegisterGuide.guideRectInView(viewWidth.toFloat(), viewHeight.toFloat())
         }
     }
 
@@ -99,7 +99,7 @@ fun AttendanceOverlay(
         if (viewWidth <= 0 || viewHeight <= 0 || guide.isEmpty) {
             null
         } else {
-            AttendanceGuide.findAlignedFace(
+            RegisterGuide.findAlignedFace(
                 faces = faces,
                 imageWidth = imageWidth,
                 imageHeight = imageHeight,
@@ -111,14 +111,14 @@ fun AttendanceOverlay(
         }
     }
 
-    var display by remember { mutableStateOf<AttendanceDisplay?>(null) }
+    var display by remember { mutableStateOf<RegisterDisplay?>(null) }
     val holdClock = remember { HoldClock() }
 
     SideEffect {
         val aligned = liveAligned
         if (aligned != null) {
             holdClock.lastGoodAtElapsedMs = SystemClock.elapsedRealtime()
-            val merged = mergeAttendanceDisplay(previous = display, live = aligned)
+            val merged = mergeRegisterDisplay(previous = display, live = aligned)
             if (merged != display) {
                 display = merged
             }
@@ -235,10 +235,10 @@ fun AttendanceOverlay(
  * - Keeps a known person if the same track briefly reports unknown.
  * - Only refreshes match % when it changes by at least 1 point.
  */
-private fun mergeAttendanceDisplay(
-    previous: AttendanceDisplay?,
+private fun mergeRegisterDisplay(
+    previous: RegisterDisplay?,
     live: TrackedFaceUi,
-): AttendanceDisplay {
+): RegisterDisplay {
     val livePercent = (live.similarity * 100f).toInt().coerceIn(0, 100)
 
     // Same track briefly lost identity — keep showing the known person.
@@ -258,7 +258,7 @@ private fun mergeAttendanceDisplay(
         return previous
     }
 
-    return AttendanceDisplay(
+    return RegisterDisplay(
         trackingId = live.trackingId,
         person = live.person,
         similarityPercent = livePercent,
@@ -320,9 +320,9 @@ private class HoldClock {
 }
 
 /**
- * Geometry helpers for the attendance guide frame.
+ * Geometry helpers for the register guide frame.
  */
-object AttendanceGuide {
+object RegisterGuide {
     /** Guide size as a fraction of the shorter view side. */
     const val GUIDE_FRACTION = 0.58f
 
