@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="camera_faces_count">Faces: %1$d</string>
+    <string name="camera_save">Save</string>
+    <string name="camera_torch_unavailable">Torch is not available on this camera</string>
+</resources>
