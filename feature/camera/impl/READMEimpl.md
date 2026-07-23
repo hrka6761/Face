@@ -12,9 +12,12 @@ and two operating modes: live recognition and guided registration.
 | [CameraBinder] | CameraX bind / switch / torch |
 | [CameraMode] | Recognition vs Register |
 | [EnrollPoseStep] / [EnrollPoseGate] | Front + left/right profile enrollment |
+| [EnrollVoiceGuide] | Spoken pose guidance (TTS) |
+| [EnrollQualityScorer] | Post-scan Bad / Good / Excellent grade |
 | [FaceOverlay] | Per-face boxes + in-box identity labels |
 | [RegisterOverlay] | Fixed guide frame + register / person details |
-| [EnrollPersonDialog] | Guided multi-pose name entry dialog |
+| [EnrollGuidanceOverlay] | Visual oval + turn arrows while scanning |
+| [EnrollQualityDialog] / [EnrollDetailsDialog] | Quality review + name entry |
 | [cameraEntry] | Navigation 3 entry |
 
 ## Modes
@@ -26,13 +29,14 @@ and two operating modes: live recognition and guided registration.
 - Face count chip sits **4dp** under the mode switcher
 
 ### Register
-- Fixed center guide frame
-- Face aligned + known → green frame + person details
-- Face aligned + unknown → red frame + **Register** → guided enroll:
-  1. Full face
-  2. Left profile
-  3. Right profile
-- Samples are accepted only when head yaw matches the active step
+1. Align face → **Register**
+2. **Align eyes** on the marked circles → press **Start** (scan does not auto-begin)
+3. Guided capture with visual oval/arrows + voice TTS (full face → left → right profile)
+4. Press **Test Scan** (does not auto-start): place face at different distances/positions
+5. Average match grade:
+   - **Bad** → below 75% — must register & test again
+   - **Good** → 75–90% — asked to repeat for better accuracy
+   - **Excellent** → above 90% — enter person details → save to Room
 
 ## Matching
 
@@ -45,7 +49,11 @@ and two operating modes: live recognition and guided registration.
 [CameraMode]: src/main/java/ir/hrka/face/camera/impl/CameraMode.kt
 [EnrollPoseStep]: src/main/java/ir/hrka/face/camera/impl/CameraMode.kt
 [EnrollPoseGate]: src/main/java/ir/hrka/face/camera/impl/EnrollPoseGate.kt
+[EnrollVoiceGuide]: src/main/java/ir/hrka/face/camera/impl/EnrollVoiceGuide.kt
+[EnrollQualityScorer]: src/main/java/ir/hrka/face/camera/impl/EnrollQualityScorer.kt
 [FaceOverlay]: src/main/java/ir/hrka/face/camera/impl/ui/FaceOverlay.kt
 [RegisterOverlay]: src/main/java/ir/hrka/face/camera/impl/ui/RegisterOverlay.kt
-[EnrollPersonDialog]: src/main/java/ir/hrka/face/camera/impl/ui/EnrollPersonDialog.kt
+[EnrollGuidanceOverlay]: src/main/java/ir/hrka/face/camera/impl/ui/EnrollGuidanceOverlay.kt
+[EnrollQualityDialog]: src/main/java/ir/hrka/face/camera/impl/ui/EnrollPersonDialog.kt
+[EnrollDetailsDialog]: src/main/java/ir/hrka/face/camera/impl/ui/EnrollPersonDialog.kt
 [cameraEntry]: src/main/java/ir/hrka/face/camera/impl/navigation/CameraEntryProvider.kt

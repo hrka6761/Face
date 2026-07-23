@@ -22,6 +22,14 @@ enum class EnrollPoseStep {
             RightProfile -> "Slowly turn your head to the RIGHT until the other side of your face is clearly visible. Hold still."
         }
 
+    /** Short phrase spoken by TTS (user may not see the screen). */
+    val spokenInstruction: String
+        get() = when (this) {
+            Front -> "Look straight at the camera. Keep your face in the oval and hold still."
+            LeftProfile -> "Now turn your head slowly to the left, and hold when I say perfect."
+            RightProfile -> "Now turn your head slowly to the right, and hold when I say perfect."
+        }
+
     /** Compact step title for progress UI. */
     val title: String
         get() = when (this) {

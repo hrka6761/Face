@@ -1,5 +1,6 @@
 package ir.hrka.face.camera.impl.ui
 
+import android.graphics.PointF
 import android.graphics.Rect
 import android.graphics.RectF
 
@@ -53,5 +54,35 @@ object FaceCoordinateMapper {
         }
 
         return RectF(left, top, right, bottom)
+    }
+
+    /**
+     * Maps an image-space point into view-space.
+     */
+    fun mapPoint(
+        x: Float,
+        y: Float,
+        imageWidth: Int,
+        imageHeight: Int,
+        viewWidth: Float,
+        viewHeight: Float,
+        mirrorX: Boolean,
+    ): PointF {
+        if (imageWidth <= 0 || imageHeight <= 0 || viewWidth <= 0f || viewHeight <= 0f) {
+            return PointF(0f, 0f)
+        }
+
+        val scale = maxOf(viewWidth / imageWidth, viewHeight / imageHeight)
+        val scaledWidth = imageWidth * scale
+        val scaledHeight = imageHeight * scale
+        val offsetX = (viewWidth - scaledWidth) / 2f
+        val offsetY = (viewHeight - scaledHeight) / 2f
+
+        var vx = x * scale + offsetX
+        val vy = y * scale + offsetY
+        if (mirrorX) {
+            vx = viewWidth - vx
+        }
+        return PointF(vx, vy)
     }
 }

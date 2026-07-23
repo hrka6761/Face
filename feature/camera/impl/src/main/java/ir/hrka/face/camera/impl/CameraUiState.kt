@@ -1,5 +1,6 @@
 package ir.hrka.face.camera.impl
 
+import android.graphics.PointF
 import android.graphics.Rect
 import ir.hrka.face.model.FaceEmbedding
 import ir.hrka.face.model.Person
@@ -13,6 +14,8 @@ import ir.hrka.face.model.Person
  * @property embedding Latest robust embedding (used while collecting enrollment samples).
  * @property similarity Match score when [person] is non-null.
  * @property headEulerAngleY Head yaw in degrees when provided by the detector.
+ * @property leftEye Left-eye landmark in analysis-image coordinates, if available.
+ * @property rightEye Right-eye landmark in analysis-image coordinates, if available.
  */
 data class TrackedFaceUi(
     val trackingId: Int,
@@ -21,26 +24,12 @@ data class TrackedFaceUi(
     val embedding: FaceEmbedding?,
     val similarity: Float,
     val headEulerAngleY: Float? = null,
+    val leftEye: PointF? = null,
+    val rightEye: PointF? = null,
 )
 
 /**
  * Immutable UI state for the camera feature.
- *
- * @property mode Active camera operating mode.
- * @property faces Faces detected in the latest processed frame.
- * @property imageWidth Analysis image width.
- * @property imageHeight Analysis image height.
- * @property isFrontCamera Whether the front lens is active.
- * @property isTorchOn Whether torch is enabled.
- * @property errorMessage Optional user-visible error.
- * @property enrollTarget Face selected for the enroll dialog, if any.
- * @property isEnrolling Whether an enroll operation is in progress.
- * @property enrollProgress Collected enrollment templates so far.
- * @property enrollTargetCount Desired number of enrollment templates.
- * @property enrollStep Active guided pose step while enrolling.
- * @property enrollStepProgress Samples collected for the current pose step.
- * @property enrollStepTarget Samples required for the current pose step.
- * @property enrollHint Live guidance text for the current pose / yaw.
  */
 data class CameraUiState(
     val mode: CameraMode = CameraMode.Recognition,
@@ -51,6 +40,7 @@ data class CameraUiState(
     val isTorchOn: Boolean = false,
     val errorMessage: String? = null,
     val enrollTarget: TrackedFaceUi? = null,
+    val enrollPhase: EnrollPhase = EnrollPhase.Idle,
     val isEnrolling: Boolean = false,
     val enrollProgress: Int = 0,
     val enrollTargetCount: Int = 12,
@@ -58,6 +48,15 @@ data class CameraUiState(
     val enrollStepProgress: Int = 0,
     val enrollStepTarget: Int = 4,
     val enrollHint: String = "",
+    val enrollPoseAligned: Boolean = false,
+    val enrollYawProgress: Float = 0f,
+    val enrollEyesAligned: Boolean = false,
+    val enrollGuideAligned: Boolean = false,
+    val enrollTestStep: EnrollTestStep? = null,
+    val enrollTestProgress: Int = 0,
+    val enrollTestTarget: Int = EnrollTestStep.TARGET_SAMPLES,
+    val enrollQualityGrade: EnrollQualityGrade? = null,
+    val enrollQualityScore: Float = 0f,
 ) {
     /** Number of faces currently on screen. */
     val faceCount: Int get() = faces.size

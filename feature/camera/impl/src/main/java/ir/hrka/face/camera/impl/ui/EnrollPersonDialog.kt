@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -17,114 +16,117 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import ir.hrka.face.camera.impl.EnrollPoseStep
+import ir.hrka.face.camera.impl.EnrollQualityGrade
 
 /**
- * Dialog that collects a person name and guides multi-pose registration progress.
+ * Post-scan quality review: Bad / Good / Excellent with next actions.
  *
- * @param isEnrolling Whether sample collection / save is in progress.
- * @param enrollProgress Number of templates collected so far.
- * @param enrollTargetCount Desired template count across all poses.
- * @param enrollStep Active guided pose step.
- * @param enrollStepProgress Samples collected for the current pose.
- * @param enrollStepTarget Samples required for the current pose.
- * @param enrollHint Live guidance for head pose.
- * @param onDismiss Called when the dialog is cancelled.
- * @param onConfirm Called with the trimmed name when the user confirms.
+ * @param grade Quality grade from the self-check.
+ * @param scorePercent Rounded quality percent.
+ * @param onScanAgain Restart the guided scan.
+ * @param onContinueExcellent Continue to person details (Excellent only).
+ * @param onDismiss Abort registration.
  */
 @Composable
-fun EnrollPersonDialog(
-    isEnrolling: Boolean,
-    enrollProgress: Int,
-    enrollTargetCount: Int,
-    enrollStep: EnrollPoseStep?,
-    enrollStepProgress: Int,
-    enrollStepTarget: Int,
-    enrollHint: String,
+fun EnrollQualityDialog(
+    grade: EnrollQualityGrade,
+    scorePercent: Int,
+    onScanAgain: () -> Unit,
+    onContinueExcellent: () -> Unit,
     onDismiss: () -> Unit,
-    onConfirm: (String) -> Unit,
 ) {
-    var name by remember { mutableStateOf("") }
-    val canSave = name.trim().isNotEmpty() && !isEnrolling
+    val body = when (grade) {
+        EnrollQualityGrade.Bad ->
+            "Average match is Bad ($scorePercent%). " +
+                "Please repeat registration and Test Scan."
+        EnrollQualityGrade.Good ->
+            "Average match is Good ($scorePercent%). " +
+                "Please scan and Test Scan again for better accuracy."
+        EnrollQualityGrade.Excellent ->
+            "Average match is Excellent ($scorePercent%). " +
+                "You can enter the person's details and finish registration."
+    }
 
     AlertDialog(
-        onDismissRequest = { onDismiss() },
-        title = {
-            Text(
-                if (isEnrolling) {
-                    enrollStep?.title ?: "Capturing face samples"
-                } else {
-                    "Register identity"
-                },
-            )
-        },
+        onDismissRequest = onDismiss,
+        title = { Text("Average match: ${grade.label}") },
         text = {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                if (isEnrolling) {
-                    Text(
-                        text = enrollStep?.instruction ?: "Follow the on-screen pose guides.",
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(enrollHint.ifBlank { "Hold still…" })
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text("This step: $enrollStepProgress / $enrollStepTarget")
-                    LinearProgressIndicator(
-                        progress = {
-                            if (enrollStepTarget <= 0) 0f
-                            else (enrollStepProgress.toFloat() / enrollStepTarget).coerceIn(0f, 1f)
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text("Overall: $enrollProgress / $enrollTargetCount")
-                    LinearProgressIndicator(
-                        progress = {
-                            if (enrollTargetCount <= 0) 0f
-                            else (enrollProgress.toFloat() / enrollTargetCount).coerceIn(0f, 1f)
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        "Steps: full face → left profile → right profile. " +
-                            "Samples are saved only when your head angle is correct.",
-                    )
-                } else {
-                    Text(
-                        "You will be guided through three poses:\n" +
-                            "1) Full face (look straight)\n" +
-                            "2) Left profile\n" +
-                            "3) Right profile\n\n" +
-                            "Keep your face inside the frame and follow each instruction carefully.",
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    OutlinedTextField(
-                        value = name,
-                        onValueChange = { name = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        enabled = true,
-                        label = { Text("Person name") },
-                    )
-                }
+            Column {
+                Text(body)
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = when (grade) {
+                        EnrollQualityGrade.Bad -> "Action required: register and test again."
+                        EnrollQualityGrade.Good -> "Recommended: register and test again for higher accuracy."
+                        EnrollQualityGrade.Excellent -> "Ready to register."
+                    },
+                    fontWeight = FontWeight.SemiBold,
+                )
             }
         },
         confirmButton = {
-            if (!isEnrolling) {
-                TextButton(
-                    onClick = { onConfirm(name.trim()) },
-                    enabled = canSave,
-                ) {
-                    Text("Start")
+            when (grade) {
+                EnrollQualityGrade.Excellent -> {
+                    TextButton(onClick = onContinueExcellent) {
+                        Text("Enter details")
+                    }
+                }
+                EnrollQualityGrade.Bad, EnrollQualityGrade.Good -> {
+                    TextButton(onClick = onScanAgain) {
+                        Text("Scan again")
+                    }
                 }
             }
         },
         dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        },
+    )
+}
+
+/**
+ * Final step: collect person details after an excellent scan.
+ *
+ * @param onDismiss Cancels registration and discards the scan.
+ * @param onSave Saves the identity with the entered name.
+ */
+@Composable
+fun EnrollDetailsDialog(
+    onDismiss: () -> Unit,
+    onSave: (String) -> Unit,
+) {
+    var name by remember { mutableStateOf("") }
+    val canSave = name.trim().isNotEmpty()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Person details") },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text("Face scan accepted. Enter the person's name to save this identity.")
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("Person name") },
+                )
+            }
+        },
+        confirmButton = {
             TextButton(
-                onClick = onDismiss,
+                onClick = { onSave(name.trim()) },
+                enabled = canSave,
             ) {
-                Text(if (isEnrolling) "Abort" else "Cancel")
+                Text("Save")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
             }
         },
     )

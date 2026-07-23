@@ -40,6 +40,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ir.hrka.face.camera.impl.CameraBinder
 import ir.hrka.face.camera.impl.CameraMode
 import ir.hrka.face.camera.impl.CameraViewModel
+import ir.hrka.face.camera.impl.EnrollPhase
+import ir.hrka.face.camera.impl.EnrollQualityGrade
 import kotlinx.coroutines.launch
 
 /**
@@ -118,15 +120,84 @@ fun CameraScreen(
                 }
 
                 CameraMode.Register -> {
-                    RegisterOverlay(
+                    if (uiState.enrollPhase == EnrollPhase.Idle) {
+                        RegisterOverlay(
+                            faces = uiState.faces,
+                            imageWidth = uiState.imageWidth,
+                            imageHeight = uiState.imageHeight,
+                            mirrorX = uiState.isFrontCamera,
+                            onRegisterClick = viewModel::requestEnroll,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                }
+            }
+
+            when (uiState.enrollPhase) {
+                EnrollPhase.AlignEyes -> {
+                    EnrollEyeAlignOverlay(
                         faces = uiState.faces,
                         imageWidth = uiState.imageWidth,
                         imageHeight = uiState.imageHeight,
                         mirrorX = uiState.isFrontCamera,
-                        onRegisterClick = viewModel::requestEnroll,
+                        eyesAligned = uiState.enrollEyesAligned,
+                        onEyesAlignedChanged = viewModel::updateEyesAligned,
+                        onStart = viewModel::startEnrollScan,
+                        onAbort = viewModel::dismissEnroll,
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
+
+                EnrollPhase.Scanning -> {
+                    if (uiState.enrollStep != null) {
+                        EnrollGuidanceOverlay(
+                            step = uiState.enrollStep!!,
+                            faces = uiState.faces,
+                            imageWidth = uiState.imageWidth,
+                            imageHeight = uiState.imageHeight,
+                            mirrorX = uiState.isFrontCamera,
+                            hint = uiState.enrollHint,
+                            stepProgress = uiState.enrollStepProgress,
+                            stepTarget = uiState.enrollStepTarget,
+                            overallProgress = uiState.enrollProgress,
+                            overallTarget = uiState.enrollTargetCount,
+                            poseAligned = uiState.enrollPoseAligned,
+                            yawProgress = uiState.enrollYawProgress,
+                            onGuideAlignedChanged = viewModel::updateGuideAligned,
+                            onAbort = viewModel::dismissEnroll,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                }
+
+                EnrollPhase.ReadyToTest -> {
+                    EnrollReadyToTestOverlay(
+                        onTestScan = viewModel::startTestScan,
+                        onAbort = viewModel::dismissEnroll,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+
+                EnrollPhase.Testing -> {
+                    uiState.enrollTestStep?.let { step ->
+                        EnrollTestScanOverlay(
+                            step = step,
+                            faces = uiState.faces,
+                            imageWidth = uiState.imageWidth,
+                            imageHeight = uiState.imageHeight,
+                            mirrorX = uiState.isFrontCamera,
+                            hint = uiState.enrollHint,
+                            progress = uiState.enrollTestProgress,
+                            target = uiState.enrollTestTarget,
+                            poseAligned = uiState.enrollPoseAligned,
+                            onGuideAlignedChanged = viewModel::updateGuideAligned,
+                            onAbort = viewModel::dismissEnroll,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                }
+
+                else -> Unit
             }
 
             Column(
@@ -136,10 +207,15 @@ fun CameraScreen(
                     .padding(top = 12.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                ModeSwitcher(
-                    mode = uiState.mode,
-                    onModeChange = viewModel::setMode,
-                )
+                val hideSwitcher = uiState.enrollPhase == EnrollPhase.Scanning ||
+                    uiState.enrollPhase == EnrollPhase.AlignEyes ||
+                    uiState.enrollPhase == EnrollPhase.Testing
+                if (!hideSwitcher) {
+                    ModeSwitcher(
+                        mode = uiState.mode,
+                        onModeChange = viewModel::setMode,
+                    )
+                }
 
                 if (uiState.mode == CameraMode.Recognition) {
                     Surface(
@@ -190,18 +266,31 @@ fun CameraScreen(
         }
     }
 
-    uiState.enrollTarget?.let {
-        EnrollPersonDialog(
-            isEnrolling = uiState.isEnrolling,
-            enrollProgress = uiState.enrollProgress,
-            enrollTargetCount = uiState.enrollTargetCount,
-            enrollStep = uiState.enrollStep,
-            enrollStepProgress = uiState.enrollStepProgress,
-            enrollStepTarget = uiState.enrollStepTarget,
-            enrollHint = uiState.enrollHint,
-            onDismiss = viewModel::dismissEnroll,
-            onConfirm = viewModel::confirmEnroll,
-        )
+    when (uiState.enrollPhase) {
+        EnrollPhase.QualityReview -> {
+            val grade = uiState.enrollQualityGrade ?: EnrollQualityGrade.Bad
+            EnrollQualityDialog(
+                grade = grade,
+                scorePercent = (uiState.enrollQualityScore * 100f).toInt().coerceIn(0, 100),
+                onScanAgain = viewModel::retryEnrollScan,
+                onContinueExcellent = viewModel::proceedToEnterDetails,
+                onDismiss = viewModel::dismissEnroll,
+            )
+        }
+
+        EnrollPhase.EnterDetails -> {
+            EnrollDetailsDialog(
+                onDismiss = viewModel::dismissEnroll,
+                onSave = viewModel::saveEnroll,
+            )
+        }
+
+        EnrollPhase.Idle,
+        EnrollPhase.AlignEyes,
+        EnrollPhase.Scanning,
+        EnrollPhase.ReadyToTest,
+        EnrollPhase.Testing,
+        -> Unit
     }
 }
 

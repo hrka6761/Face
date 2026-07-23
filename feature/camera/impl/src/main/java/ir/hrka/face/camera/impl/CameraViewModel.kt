@@ -16,12 +16,14 @@ import ir.hrka.face.domain.EnrollPersonUseCase
 import ir.hrka.face.domain.IdentifyFacesUseCase
 import ir.hrka.face.model.DetectedFace
 import ir.hrka.face.model.FaceEmbedding
+import ir.hrka.face.model.FaceLandmarkType
 import ir.hrka.face.model.FaceMatchResult
 import ir.hrka.face.model.Person
 import ir.hrka.face.recognition.api.FaceEmbedder
 import ir.hrka.face.recognition.api.FaceRecognitionConfig
 import ir.hrka.face.recognition.api.FaceRecognitionFactory
 import ir.hrka.face.recognition.internal.ImageConversion
+import android.graphics.PointF
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -66,12 +68,16 @@ class CameraViewModel @Inject constructor(
 
     private val identityVotes = mutableMapOf<Int, MutableList<Person?>>()
     private val enrollSamples = mutableListOf<FaceEmbedding>()
+    private val testProbes = mutableListOf<FaceEmbedding>()
     private var enrollTrackingId: Int? = null
-    private var enrollName: String? = null
     private var enrollStartedAtMs: Long = 0L
     private var enrollStep: EnrollPoseStep = EnrollPoseStep.FIRST
     private var enrollStepCount: Int = 0
     private var lastEnrollSampleAtMs: Long = 0L
+    private var testStep: EnrollTestStep = EnrollTestStep.FIRST
+    private var testStepCount: Int = 0
+    private var lastTestSampleAtMs: Long = 0L
+    private val voiceGuide = EnrollVoiceGuide(appContext)
 
     private val _uiState = MutableStateFlow(CameraUiState())
     val uiState: StateFlow<CameraUiState> = _uiState.asStateFlow()
@@ -226,6 +232,17 @@ class CameraViewModel @Inject constructor(
             Log.e(TAG, "Enrollment sample collection failed", error)
         }
 
+        runCatching {
+            maybeCollectTestSamples(
+                embedder = activeEmbedder,
+                bitmap = bitmap,
+                faces = faces,
+                embeddings = embeddings,
+            )
+        }.onFailure { error ->
+            Log.e(TAG, "Test sample collection failed", error)
+        }
+
         publishTrackedFaces(
             faces = faces,
             imageWidth = imageWidth,
@@ -266,6 +283,12 @@ class CameraViewModel @Inject constructor(
                     raw?.similarity ?: 0f
                 },
                 headEulerAngleY = face.headEulerAngleY ?: previous?.headEulerAngleY,
+                leftEye = face.landmarks[FaceLandmarkType.LEFT_EYE]
+                    ?.let { PointF(it.x, it.y) }
+                    ?: previous?.leftEye,
+                rightEye = face.landmarks[FaceLandmarkType.RIGHT_EYE]
+                    ?.let { PointF(it.x, it.y) }
+                    ?: previous?.rightEye,
             )
         }
 
@@ -287,16 +310,29 @@ class CameraViewModel @Inject constructor(
         embeddings: Map<Int, FaceEmbedding>,
     ) {
         val trackingId = enrollTrackingId ?: return
-        val name = enrollName ?: return
+        if (_uiState.value.enrollPhase != EnrollPhase.Scanning) return
         if (!_uiState.value.isEnrolling) return
         if (bitmap.isRecycled) return
 
-        val face = faces.firstOrNull { it.trackingId == trackingId } ?: return
+        val face = faces.firstOrNull { it.trackingId == trackingId }
+            ?: faces.maxByOrNull { it.boundingBox.width() * it.boundingBox.height() }
+            ?: return
+        if (face.trackingId != trackingId) {
+            enrollTrackingId = face.trackingId
+        }
+
         val yaw = face.headEulerAngleY
         val isFront = _uiState.value.isFrontCamera
         val step = enrollStep
         val poseOk = yaw != null && EnrollPoseGate.matches(step, yaw, isFront)
         val hint = EnrollPoseGate.hint(step, yaw, isFront)
+        val progress = EnrollPoseGate.progress(step, yaw, isFront)
+
+        voiceGuide.announceStep(step)
+        val spoken = EnrollPoseGate.spokenHint(step, yaw, isFront)
+        if (spoken != null) {
+            voiceGuide.speakHint(spoken, force = poseOk)
+        }
 
         _uiState.update {
             it.copy(
@@ -304,20 +340,34 @@ class CameraViewModel @Inject constructor(
                 enrollStepProgress = enrollStepCount,
                 enrollStepTarget = FaceRecognitionConfig.ENROLL_SAMPLES_PER_POSE,
                 enrollHint = hint,
+                enrollPoseAligned = poseOk,
+                enrollYawProgress = progress,
                 enrollProgress = synchronized(enrollSamples) { enrollSamples.size },
                 enrollTargetCount = FaceRecognitionConfig.ENROLL_TARGET_TEMPLATES,
             )
         }
 
         if (!poseOk) return
+        if (!_uiState.value.enrollGuideAligned) {
+            _uiState.update {
+                it.copy(
+                    enrollHint = when (step) {
+                        EnrollPoseStep.Front ->
+                            "Fit your face in the oval and place both eyes on the circles."
+                        else ->
+                            "Turn to the correct profile and fit your face inside the oval."
+                    },
+                )
+            }
+            return
+        }
 
         val now = System.currentTimeMillis()
-        // Space samples so each pose gathers diverse frames, not near-duplicates.
         if (now - lastEnrollSampleAtMs < SAMPLE_INTERVAL_MS) return
 
         val robust = withContext(Dispatchers.Default) {
             runCatching { embedder.embedRobust(bitmap, face) }.getOrNull()
-        } ?: embeddings[trackingId] ?: return
+        } ?: embeddings[face.trackingId] ?: return
 
         lastEnrollSampleAtMs = now
         val stepDone: Boolean
@@ -340,82 +390,278 @@ class CameraViewModel @Inject constructor(
             }
         }
 
+        if (stepDone && !allDone) {
+            voiceGuide.announceStep(enrollStep)
+            _uiState.update { it.copy(enrollGuideAligned = false) }
+        }
+
         _uiState.update {
             it.copy(
                 enrollStep = enrollStep,
                 enrollStepProgress = enrollStepCount,
                 enrollStepTarget = FaceRecognitionConfig.ENROLL_SAMPLES_PER_POSE,
                 enrollHint = if (allDone) {
-                    "All poses captured — saving…"
+                    "Scan complete — checking quality…"
                 } else if (stepDone) {
                     enrollStep.instruction
                 } else {
                     hint
                 },
+                enrollPoseAligned = poseOk,
+                enrollYawProgress = if (allDone) 1f else progress,
                 enrollProgress = synchronized(enrollSamples) { enrollSamples.size },
                 enrollTargetCount = FaceRecognitionConfig.ENROLL_TARGET_TEMPLATES,
             )
         }
 
         if (allDone) {
-            finishEnrollment(name)
+            completeScanAndReviewQuality()
         }
     }
 
-    private suspend fun finishEnrollment(name: String) {
+    private fun completeScanAndReviewQuality() {
         val samples = synchronized(enrollSamples) { enrollSamples.toList() }
         val minRequired = FaceRecognitionConfig.ENROLL_TARGET_TEMPLATES
         if (samples.size < minRequired) {
             _uiState.update {
                 it.copy(
                     isEnrolling = false,
+                    enrollPhase = EnrollPhase.Idle,
                     enrollTarget = null,
                     enrollProgress = 0,
                     enrollStep = null,
                     enrollHint = "",
+                    enrollPoseAligned = false,
+                    enrollYawProgress = 0f,
                     errorMessage = "Registration incomplete — capture full face and both profiles",
                 )
             }
-            clearEnrollmentSession()
+            clearEnrollmentSession(keepSamples = false)
+            return
+        }
+
+        voiceGuide.speak(
+            "Enrollment scan complete. Press Test Scan to check match quality at different distances.",
+            flush = true,
+        )
+        _uiState.update {
+            it.copy(
+                isEnrolling = false,
+                enrollPhase = EnrollPhase.ReadyToTest,
+                enrollHint = "Press Test Scan to verify match at different distances and positions.",
+                enrollPoseAligned = false,
+                enrollQualityGrade = null,
+                enrollQualityScore = 0f,
+                enrollTestStep = null,
+                enrollTestProgress = 0,
+                enrollTestTarget = EnrollTestStep.TARGET_SAMPLES,
+            )
+        }
+    }
+
+    private suspend fun maybeCollectTestSamples(
+        embedder: FaceEmbedder,
+        bitmap: Bitmap,
+        faces: List<DetectedFace>,
+        embeddings: Map<Int, FaceEmbedding>,
+    ) {
+        if (_uiState.value.enrollPhase != EnrollPhase.Testing) return
+        if (bitmap.isRecycled) return
+
+        val trackingId = enrollTrackingId
+        val face = faces.firstOrNull { it.trackingId == trackingId }
+            ?: faces.maxByOrNull { it.boundingBox.width() * it.boundingBox.height() }
+            ?: return
+        if (trackingId == null || face.trackingId != trackingId) {
+            enrollTrackingId = face.trackingId
+        }
+
+        val yaw = face.headEulerAngleY
+        val isFront = _uiState.value.isFrontCamera
+        val poseStep = testStep.matchingPoseStep() ?: EnrollPoseStep.Front
+        val poseOk = yaw != null && EnrollPoseGate.matches(poseStep, yaw, isFront)
+        val guideOk = _uiState.value.enrollGuideAligned
+        val hint = when {
+            !poseOk -> EnrollPoseGate.hint(poseStep, yaw, isFront)
+            !guideOk && testStep.requiresEyes ->
+                "Fit your face in the oval and place both eyes on the circles."
+            !guideOk ->
+                "Fit your face inside the oval for this profile."
+            else -> "Aligned — capturing…"
+        }
+
+        _uiState.update {
+            it.copy(
+                enrollTestStep = testStep,
+                enrollHint = hint,
+                enrollPoseAligned = poseOk,
+                enrollTestProgress = synchronized(testProbes) { testProbes.size },
+                enrollTestTarget = EnrollTestStep.TARGET_SAMPLES,
+            )
+        }
+
+        if (!poseOk || !guideOk) return
+
+        val now = System.currentTimeMillis()
+        if (now - lastTestSampleAtMs < SAMPLE_INTERVAL_MS) return
+
+        val robust = withContext(Dispatchers.Default) {
+            runCatching { embedder.embedRobust(bitmap, face) }.getOrNull()
+        } ?: embeddings[face.trackingId] ?: return
+
+        lastTestSampleAtMs = now
+        val stepDone: Boolean
+        val allDone: Boolean
+        synchronized(testProbes) {
+            testProbes += robust
+            testStepCount += 1
+            stepDone = testStepCount >= EnrollTestStep.SAMPLES_PER_STEP
+            if (stepDone) {
+                val next = testStep.next()
+                if (next != null) {
+                    testStep = next
+                    testStepCount = 0
+                    allDone = false
+                } else {
+                    allDone = true
+                }
+            } else {
+                allDone = false
+            }
+        }
+
+        if (stepDone && !allDone) {
+            voiceGuide.speak(testStep.spokenInstruction, flush = true)
+            // Require a fresh alignment for the next oval size / pose.
+            _uiState.update { it.copy(enrollGuideAligned = false) }
+        }
+
+        _uiState.update {
+            it.copy(
+                enrollTestStep = testStep,
+                enrollHint = if (allDone) {
+                    "Test complete — computing average match…"
+                } else {
+                    testStep.instruction
+                },
+                enrollTestProgress = synchronized(testProbes) { testProbes.size },
+                enrollTestTarget = EnrollTestStep.TARGET_SAMPLES,
+            )
+        }
+
+        if (allDone) {
+            finishTestScan()
+        }
+    }
+
+    private fun finishTestScan() {
+        val gallery = synchronized(enrollSamples) { enrollSamples.toList() }
+        val probes = synchronized(testProbes) { testProbes.toList() }
+        val (score, grade) = EnrollQualityScorer.evaluateProbes(gallery, probes)
+        val percent = (score * 100f).toInt().coerceIn(0, 100)
+        voiceGuide.announceQuality(grade, percent)
+
+        _uiState.update {
+            it.copy(
+                enrollPhase = EnrollPhase.QualityReview,
+                isEnrolling = false,
+                enrollQualityGrade = grade,
+                enrollQualityScore = score,
+                enrollHint = "Average match: ${grade.label} ($percent%)",
+                enrollTestStep = null,
+                enrollPoseAligned = false,
+            )
+        }
+    }
+
+    private suspend fun persistEnrollment(name: String) {
+        val samples = synchronized(enrollSamples) { enrollSamples.toList() }
+        if (samples.size < FaceRecognitionConfig.ENROLL_TARGET_TEMPLATES) {
+            _uiState.update {
+                it.copy(errorMessage = "No scan data to save — please scan again")
+            }
             return
         }
 
         try {
             enrollPerson(name, samples)
+            voiceGuide.speak("Registration complete.")
             _uiState.update {
                 it.copy(
                     enrollTarget = null,
+                    enrollPhase = EnrollPhase.Idle,
                     isEnrolling = false,
                     enrollProgress = 0,
                     enrollStep = null,
                     enrollHint = "",
+                    enrollQualityGrade = null,
+                    enrollQualityScore = 0f,
+                    enrollPoseAligned = false,
+                    enrollYawProgress = 0f,
+                    enrollEyesAligned = false,
+                    enrollTestStep = null,
+                    enrollTestProgress = 0,
                     errorMessage = null,
                 )
             }
             identityVotes.clear()
+            clearEnrollmentSession(keepSamples = false)
         } catch (t: CancellationException) {
             throw t
         } catch (t: Throwable) {
             Log.e(TAG, "Failed to save identity", t)
             _uiState.update {
-                it.copy(
-                    isEnrolling = false,
-                    errorMessage = t.message ?: "Failed to save identity",
-                )
+                it.copy(errorMessage = t.message ?: "Failed to save identity")
             }
-        } finally {
-            clearEnrollmentSession()
         }
     }
 
-    private fun clearEnrollmentSession() {
+    private fun clearEnrollmentSession(keepSamples: Boolean = false) {
         enrollTrackingId = null
-        enrollName = null
         enrollStartedAtMs = 0L
         enrollStep = EnrollPoseStep.FIRST
         enrollStepCount = 0
         lastEnrollSampleAtMs = 0L
-        synchronized(enrollSamples) { enrollSamples.clear() }
+        testStep = EnrollTestStep.FIRST
+        testStepCount = 0
+        lastTestSampleAtMs = 0L
+        voiceGuide.resetStepMemory()
+        voiceGuide.stop()
+        synchronized(testProbes) { testProbes.clear() }
+        if (!keepSamples) {
+            synchronized(enrollSamples) { enrollSamples.clear() }
+        }
+    }
+
+    private fun beginScan(trackingId: Int) {
+        enrollTrackingId = trackingId
+        enrollStartedAtMs = System.currentTimeMillis()
+        enrollStep = EnrollPoseStep.FIRST
+        enrollStepCount = 0
+        lastEnrollSampleAtMs = 0L
+        synchronized(testProbes) { testProbes.clear() }
+        // Keep existing enrollSamples only when retesting; full rescan clears them.
+        voiceGuide.resetStepMemory()
+        voiceGuide.announceStep(EnrollPoseStep.FIRST)
+        _uiState.update {
+            it.copy(
+                enrollPhase = EnrollPhase.Scanning,
+                isEnrolling = true,
+                enrollProgress = synchronized(enrollSamples) { enrollSamples.size },
+                enrollTargetCount = FaceRecognitionConfig.ENROLL_TARGET_TEMPLATES,
+                enrollStep = EnrollPoseStep.FIRST,
+                enrollStepProgress = 0,
+                enrollStepTarget = FaceRecognitionConfig.ENROLL_SAMPLES_PER_POSE,
+                enrollHint = EnrollPoseStep.FIRST.instruction,
+                enrollPoseAligned = false,
+                enrollYawProgress = 0f,
+                enrollEyesAligned = false,
+                enrollQualityGrade = null,
+                enrollQualityScore = 0f,
+                enrollTestStep = null,
+                enrollTestProgress = 0,
+            )
+        }
     }
 
     /**
@@ -458,74 +704,192 @@ class CameraViewModel @Inject constructor(
      */
     fun setMode(mode: CameraMode) {
         if (_uiState.value.mode == mode) return
-        clearEnrollmentSession()
+        clearEnrollmentSession(keepSamples = false)
         identityVotes.clear()
         _uiState.update {
             it.copy(
                 mode = mode,
                 enrollTarget = null,
+                enrollPhase = EnrollPhase.Idle,
                 isEnrolling = false,
                 enrollProgress = 0,
                 enrollStep = null,
                 enrollStepProgress = 0,
                 enrollHint = "",
+                enrollPoseAligned = false,
+                enrollYawProgress = 0f,
+                enrollQualityGrade = null,
+                enrollQualityScore = 0f,
+                enrollEyesAligned = false,
+                enrollTestStep = null,
+                enrollTestProgress = 0,
             )
         }
     }
 
     /**
-     * Opens the enrollment dialog for an unknown face.
+     * Opens eye-alignment guidance for an unknown face.
+     * Scanning does **not** start until the user presses Start.
      * Only valid in [CameraMode.Register].
      */
     fun requestEnroll(face: TrackedFaceUi) {
         if (_uiState.value.mode != CameraMode.Register) return
         if (face.person != null) return
+        enrollTrackingId = face.trackingId
+        synchronized(enrollSamples) { enrollSamples.clear() }
+        synchronized(testProbes) { testProbes.clear() }
+        voiceGuide.speak(
+            "Place your eyes exactly on the two circles, then press Start.",
+            flush = true,
+        )
         _uiState.update {
             it.copy(
                 enrollTarget = face,
+                enrollPhase = EnrollPhase.AlignEyes,
+                isEnrolling = false,
                 enrollProgress = 0,
                 enrollTargetCount = FaceRecognitionConfig.ENROLL_TARGET_TEMPLATES,
-                enrollStep = EnrollPoseStep.FIRST,
+                enrollStep = null,
                 enrollStepProgress = 0,
-                enrollStepTarget = FaceRecognitionConfig.ENROLL_SAMPLES_PER_POSE,
-                enrollHint = EnrollPoseStep.FIRST.instruction,
+                enrollHint = "Place each eye inside its circle, then press Start.",
+                enrollPoseAligned = false,
+                enrollYawProgress = 0f,
+                enrollEyesAligned = false,
+                enrollQualityGrade = null,
+                enrollQualityScore = 0f,
+                enrollTestStep = null,
+                enrollTestProgress = 0,
+                enrollTestTarget = EnrollTestStep.TARGET_SAMPLES,
             )
         }
     }
 
+    /**
+     * Updates whether both eyes currently sit on the on-screen targets.
+     */
+    fun updateEyesAligned(aligned: Boolean) {
+        if (_uiState.value.enrollPhase != EnrollPhase.AlignEyes) return
+        if (_uiState.value.enrollEyesAligned == aligned) return
+        _uiState.update {
+            it.copy(
+                enrollEyesAligned = aligned,
+                enrollHint = if (aligned) {
+                    "Eyes aligned — press Start to begin the full-face scan."
+                } else {
+                    "Place each eye inside its circle, then press Start."
+                },
+            )
+        }
+    }
+
+    /**
+     * Updates whether the face/eyes currently fit the active scan or test oval guide.
+     */
+    fun updateGuideAligned(aligned: Boolean) {
+        val phase = _uiState.value.enrollPhase
+        if (phase != EnrollPhase.Scanning && phase != EnrollPhase.Testing) return
+        if (_uiState.value.enrollGuideAligned == aligned) return
+        _uiState.update { it.copy(enrollGuideAligned = aligned) }
+    }
+
+    /**
+     * Starts the guided front + profile enrollment scan after eye alignment.
+     */
+    fun startEnrollScan() {
+        if (_uiState.value.enrollPhase != EnrollPhase.AlignEyes) return
+        if (!_uiState.value.enrollEyesAligned) {
+            voiceGuide.speak("Align your eyes on the circles first.", flush = true)
+            return
+        }
+        val trackingId = enrollTrackingId
+            ?: _uiState.value.enrollTarget?.trackingId
+            ?: _uiState.value.faces.firstOrNull()?.trackingId
+            ?: return
+        synchronized(enrollSamples) { enrollSamples.clear() }
+        beginScan(trackingId)
+    }
+
+    /**
+     * Cancels registration and discards any scanned samples.
+     */
     fun dismissEnroll() {
-        clearEnrollmentSession()
+        clearEnrollmentSession(keepSamples = false)
         _uiState.update {
             it.copy(
                 enrollTarget = null,
+                enrollPhase = EnrollPhase.Idle,
                 isEnrolling = false,
                 enrollProgress = 0,
                 enrollStep = null,
                 enrollStepProgress = 0,
                 enrollHint = "",
+                enrollPoseAligned = false,
+                enrollYawProgress = 0f,
+                enrollEyesAligned = false,
+                enrollQualityGrade = null,
+                enrollQualityScore = 0f,
+                enrollTestStep = null,
+                enrollTestProgress = 0,
             )
         }
     }
 
-    fun confirmEnroll(name: String) {
-        val target = _uiState.value.enrollTarget ?: return
-        enrollTrackingId = target.trackingId
-        enrollName = name.trim()
-        enrollStartedAtMs = System.currentTimeMillis()
-        enrollStep = EnrollPoseStep.FIRST
-        enrollStepCount = 0
-        lastEnrollSampleAtMs = 0L
-        synchronized(enrollSamples) { enrollSamples.clear() }
+    /**
+     * Restarts from eye alignment after a Bad or Good quality result.
+     */
+    fun retryEnrollScan() {
+        val face = _uiState.value.enrollTarget
+            ?: _uiState.value.faces.firstOrNull()
+            ?: return
+        requestEnroll(face.copy(person = null))
+    }
+
+    /**
+     * Starts the manual Test Scan (does not run automatically after enrollment).
+     */
+    fun startTestScan() {
+        if (_uiState.value.enrollPhase != EnrollPhase.ReadyToTest) return
+        if (synchronized(enrollSamples) { enrollSamples.size } < FaceRecognitionConfig.ENROLL_TARGET_TEMPLATES) {
+            _uiState.update { it.copy(errorMessage = "Enrollment scan incomplete — scan again first") }
+            return
+        }
+        testStep = EnrollTestStep.FIRST
+        testStepCount = 0
+        lastTestSampleAtMs = 0L
+        synchronized(testProbes) { testProbes.clear() }
+        voiceGuide.speak(EnrollTestStep.FIRST.spokenInstruction, flush = true)
         _uiState.update {
             it.copy(
-                isEnrolling = true,
-                enrollProgress = 0,
-                enrollTargetCount = FaceRecognitionConfig.ENROLL_TARGET_TEMPLATES,
-                enrollStep = EnrollPoseStep.FIRST,
-                enrollStepProgress = 0,
-                enrollStepTarget = FaceRecognitionConfig.ENROLL_SAMPLES_PER_POSE,
-                enrollHint = EnrollPoseStep.FIRST.instruction,
+                enrollPhase = EnrollPhase.Testing,
+                isEnrolling = false,
+                enrollTestStep = EnrollTestStep.FIRST,
+                enrollTestProgress = 0,
+                enrollTestTarget = EnrollTestStep.TARGET_SAMPLES,
+                enrollHint = EnrollTestStep.FIRST.instruction,
+                enrollPoseAligned = false,
+                enrollQualityGrade = null,
+                enrollQualityScore = 0f,
             )
+        }
+    }
+
+    /**
+     * Moves from an Excellent quality review to the person-details step.
+     */
+    fun proceedToEnterDetails() {
+        if (_uiState.value.enrollQualityGrade != EnrollQualityGrade.Excellent) return
+        _uiState.update { it.copy(enrollPhase = EnrollPhase.EnterDetails) }
+    }
+
+    /**
+     * Saves the scanned templates with the provided person name.
+     */
+    fun saveEnroll(name: String) {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) return
+        if (_uiState.value.enrollPhase != EnrollPhase.EnterDetails) return
+        viewModelScope.launch(Dispatchers.IO) {
+            persistEnrollment(trimmed)
         }
     }
 
@@ -543,7 +907,8 @@ class CameraViewModel @Inject constructor(
         detector.close()
         embedder?.close()
         embedder = null
-        clearEnrollmentSession()
+        voiceGuide.release()
+        clearEnrollmentSession(keepSamples = false)
         super.onCleared()
     }
 
