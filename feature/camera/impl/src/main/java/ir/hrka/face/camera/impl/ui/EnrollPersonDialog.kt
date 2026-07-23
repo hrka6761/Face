@@ -18,7 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
 /**
- * Dialog that collects a person name and shows multi-sample enrollment progress.
+ * Dialog that collects a person name and shows multi-sample registration progress.
  *
  * @param isEnrolling Whether sample collection / save is in progress.
  * @param enrollProgress Number of templates collected so far.
@@ -39,7 +39,7 @@ fun EnrollPersonDialog(
 
     AlertDialog(
         onDismissRequest = { if (!isEnrolling) onDismiss() },
-        title = { Text(if (isEnrolling) "Capturing face samples" else "Save identity") },
+        title = { Text(if (isEnrolling) "Capturing face samples" else "Register identity") },
         text = {
             Column(modifier = Modifier.fillMaxWidth()) {
                 if (isEnrolling) {
@@ -59,7 +59,7 @@ fun EnrollPersonDialog(
                     Text("Samples: $enrollProgress / $enrollTargetCount")
                 } else {
                     Text(
-                        "After you tap Save, keep your face in view for ~2 seconds " +
+                        "After you tap Register, keep your face in the frame for ~2 seconds " +
                             "while the app captures multiple samples.",
                     )
                     Spacer(modifier = Modifier.height(12.dp))
@@ -80,7 +80,7 @@ fun EnrollPersonDialog(
                     onClick = { onConfirm(name.trim()) },
                     enabled = canSave,
                 ) {
-                    Text("Save")
+                    Text("Register")
                 }
             }
         },

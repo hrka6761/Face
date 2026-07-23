@@ -239,15 +239,29 @@ class CameraViewModel @Inject constructor(
         embeddings: Map<Int, FaceEmbedding>,
         matches: Map<Int, FaceMatchResult>,
     ) {
+        // Box-only publishes (empty matches) happen before embedding finishes.
+        // Preserve prior identity so attendance / labels do not flash every frame.
+        val boxOnlyUpdate = matches.isEmpty() && embeddings.isEmpty()
+        val previousById = _uiState.value.faces.associateBy { it.trackingId }
+
         val tracked = faces.map { face ->
+            val previous = previousById[face.trackingId]
             val raw = matches[face.trackingId]
-            val smoothed = smoothIdentity(face.trackingId, raw?.person)
+            val smoothed = if (boxOnlyUpdate) {
+                previous?.person
+            } else {
+                smoothIdentity(face.trackingId, raw?.person)
+            }
             TrackedFaceUi(
                 trackingId = face.trackingId,
                 boundingBox = face.boundingBox,
                 person = smoothed,
-                embedding = embeddings[face.trackingId],
-                similarity = raw?.similarity ?: 0f,
+                embedding = embeddings[face.trackingId] ?: previous?.embedding,
+                similarity = if (boxOnlyUpdate) {
+                    previous?.similarity ?: 0f
+                } else {
+                    raw?.similarity ?: 0f
+                },
             )
         }
 
@@ -383,7 +397,30 @@ class CameraViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Switches between recognition and attendance modes.
+     * Clears any in-progress enrollment when the mode changes.
+     */
+    fun setMode(mode: CameraMode) {
+        if (_uiState.value.mode == mode) return
+        clearEnrollmentSession()
+        identityVotes.clear()
+        _uiState.update {
+            it.copy(
+                mode = mode,
+                enrollTarget = null,
+                isEnrolling = false,
+                enrollProgress = 0,
+            )
+        }
+    }
+
+    /**
+     * Opens the enrollment dialog for an unknown face.
+     * Only valid in [CameraMode.Attendance].
+     */
     fun requestEnroll(face: TrackedFaceUi) {
+        if (_uiState.value.mode != CameraMode.Attendance) return
         if (face.person != null) return
         _uiState.update {
             it.copy(

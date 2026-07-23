@@ -21,7 +21,7 @@ Architecture follows the same modular layout as [Hooshmand](../Hooshmand): `:app
 | `:core:face_detection` | Reusable ML Kit detector |
 | `:core:face_recognition` | Reusable MobileFaceNet embedder / matcher |
 | `:feature:splash:{api,impl}` | CAMERA permission gate |
-| `:feature:camera:{api,impl}` | Fullscreen camera + overlays + enroll |
+| `:feature:camera:{api,impl}` | Fullscreen camera: recognition + attendance modes |
 
 ## Build
 

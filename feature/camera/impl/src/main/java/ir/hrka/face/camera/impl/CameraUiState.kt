@@ -24,6 +24,7 @@ data class TrackedFaceUi(
 /**
  * Immutable UI state for the camera feature.
  *
+ * @property mode Active camera operating mode.
  * @property faces Faces detected in the latest processed frame.
  * @property imageWidth Analysis image width.
  * @property imageHeight Analysis image height.
@@ -36,6 +37,7 @@ data class TrackedFaceUi(
  * @property enrollTargetCount Desired number of enrollment templates.
  */
 data class CameraUiState(
+    val mode: CameraMode = CameraMode.Recognition,
     val faces: List<TrackedFaceUi> = emptyList(),
     val imageWidth: Int = 0,
     val imageHeight: Int = 0,

@@ -15,6 +15,9 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -34,11 +37,12 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ir.hrka.face.camera.impl.CameraBinder
+import ir.hrka.face.camera.impl.CameraMode
 import ir.hrka.face.camera.impl.CameraViewModel
 import kotlinx.coroutines.launch
 
 /**
- * Fullscreen camera screen with face overlays, face count, and enroll dialog.
+ * Fullscreen camera screen with recognition and attendance modes.
  *
  * @param viewModel Camera feature ViewModel.
  */
@@ -101,29 +105,54 @@ fun CameraScreen(
                 },
             )
 
-            FaceOverlay(
-                faces = uiState.faces,
-                imageWidth = uiState.imageWidth,
-                imageHeight = uiState.imageHeight,
-                mirrorX = uiState.isFrontCamera,
-                onSaveClick = viewModel::requestEnroll,
-                modifier = Modifier.fillMaxSize(),
-            )
+            when (uiState.mode) {
+                CameraMode.Recognition -> {
+                    FaceOverlay(
+                        faces = uiState.faces,
+                        imageWidth = uiState.imageWidth,
+                        imageHeight = uiState.imageHeight,
+                        mirrorX = uiState.isFrontCamera,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
 
-            Surface(
+                CameraMode.Attendance -> {
+                    AttendanceOverlay(
+                        faces = uiState.faces,
+                        imageWidth = uiState.imageWidth,
+                        imageHeight = uiState.imageHeight,
+                        mirrorX = uiState.isFrontCamera,
+                        onRegisterClick = viewModel::requestEnroll,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
+
+            ModeSwitcher(
+                mode = uiState.mode,
+                onModeChange = viewModel::setMode,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .statusBarsPadding()
                     .padding(top = 12.dp),
-                color = Color.Black.copy(alpha = 0.55f),
-                shape = MaterialTheme.shapes.medium,
-            ) {
-                Text(
-                    text = "Faces: ${uiState.faceCount}",
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                    color = Color.White,
-                    style = MaterialTheme.typography.titleMedium,
-                )
+            )
+
+            if (uiState.mode == CameraMode.Recognition) {
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .statusBarsPadding()
+                        .padding(top = 64.dp),
+                    color = Color.Black.copy(alpha = 0.55f),
+                    shape = MaterialTheme.shapes.medium,
+                ) {
+                    Text(
+                        text = "Faces: ${uiState.faceCount}",
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        color = Color.White,
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                }
             }
 
             FloatingActionButton(
@@ -167,5 +196,47 @@ fun CameraScreen(
             onDismiss = viewModel::dismissEnroll,
             onConfirm = viewModel::confirmEnroll,
         )
+    }
+}
+
+@Composable
+private fun ModeSwitcher(
+    mode: CameraMode,
+    onModeChange: (CameraMode) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val options = listOf(CameraMode.Recognition, CameraMode.Attendance)
+    Surface(
+        modifier = modifier,
+        color = Color.Black.copy(alpha = 0.55f),
+        shape = MaterialTheme.shapes.medium,
+    ) {
+        SingleChoiceSegmentedButtonRow(
+            modifier = Modifier.padding(4.dp),
+        ) {
+            options.forEachIndexed { index, option ->
+                SegmentedButton(
+                    selected = mode == option,
+                    onClick = { onModeChange(option) },
+                    shape = SegmentedButtonDefaults.itemShape(
+                        index = index,
+                        count = options.size,
+                    ),
+                    colors = SegmentedButtonDefaults.colors(
+                        activeContainerColor = MaterialTheme.colorScheme.primary,
+                        activeContentColor = MaterialTheme.colorScheme.onPrimary,
+                        inactiveContainerColor = Color.Transparent,
+                        inactiveContentColor = Color.White,
+                    ),
+                ) {
+                    Text(
+                        text = when (option) {
+                            CameraMode.Recognition -> "Recognize"
+                            CameraMode.Attendance -> "Attendance"
+                        },
+                    )
+                }
+            }
+        }
     }
 }
