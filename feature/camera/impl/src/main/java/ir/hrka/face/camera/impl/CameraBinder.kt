@@ -41,8 +41,7 @@ class CameraBinder(
         controller.setEnabledUseCases(CameraController.IMAGE_ANALYSIS)
         controller.imageAnalysisBackpressureStrategy =
             ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST
-        // Keep default YUV_420_888 — required by ML Kit InputImage.fromMediaImage().
-        // Do NOT switch to RGBA_8888; that breaks the media-image detection path.
+        // YUV is converted to an upright Bitmap for SCRFD / ArcFace in the ViewModel.
         controller.imageAnalysisOutputImageFormat =
             ImageAnalysis.OUTPUT_IMAGE_FORMAT_YUV_420_888
     }

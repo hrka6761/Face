@@ -1,9 +1,11 @@
 package ir.hrka.face.model
 
 /**
- * L2-normalized face embedding vector produced by MobileFaceNet.
+ * L2-normalized face embedding vector.
  *
- * @property values Embedding components (typically 192-dimensional).
+ * Current engine (ArcFace / buffalo_l) produces 512-dimensional vectors.
+ *
+ * @property values Embedding components.
  */
 data class FaceEmbedding(
     val values: FloatArray,

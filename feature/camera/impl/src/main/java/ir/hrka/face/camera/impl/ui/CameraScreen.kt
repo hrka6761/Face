@@ -47,6 +47,8 @@ import kotlinx.coroutines.launch
 /**
  * Fullscreen camera screen with recognition and register modes.
  *
+ * The camera preview stays off until the face recognition engine is ready.
+ *
  * @param viewModel Camera feature ViewModel.
  */
 @Composable
@@ -77,8 +79,10 @@ fun CameraScreen(
         onDispose { binder.release() }
     }
 
-    LaunchedEffect(uiState.errorMessage) {
+    LaunchedEffect(uiState.errorMessage, uiState.isPreparingEngine) {
         val message = uiState.errorMessage ?: return@LaunchedEffect
+        // Keep prepare failures on the overlay (with Retry); don't snackbar them away.
+        if (uiState.isPreparingEngine || !uiState.engineReady) return@LaunchedEffect
         if (message.contains("Task was cancelled", ignoreCase = true) ||
             message.contains("Job was cancelled", ignoreCase = true)
         ) {
@@ -99,198 +103,212 @@ fun CameraScreen(
                 .fillMaxSize()
                 .padding(padding),
         ) {
-            AndroidView(
-                modifier = Modifier.fillMaxSize(),
-                factory = { ctx ->
-                    PreviewView(ctx).also { previewView ->
-                        binder.start(previewView)
-                    }
-                },
-            )
+            if (uiState.engineReady) {
+                AndroidView(
+                    modifier = Modifier.fillMaxSize(),
+                    factory = { ctx ->
+                        PreviewView(ctx).also { previewView ->
+                            binder.start(previewView)
+                        }
+                    },
+                )
 
-            when (uiState.mode) {
-                CameraMode.Recognition -> {
-                    FaceOverlay(
-                        faces = uiState.faces,
-                        imageWidth = uiState.imageWidth,
-                        imageHeight = uiState.imageHeight,
-                        mirrorX = uiState.isFrontCamera,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-
-                CameraMode.Register -> {
-                    if (uiState.enrollPhase == EnrollPhase.Idle) {
-                        RegisterOverlay(
+                when (uiState.mode) {
+                    CameraMode.Recognition -> {
+                        FaceOverlay(
                             faces = uiState.faces,
                             imageWidth = uiState.imageWidth,
                             imageHeight = uiState.imageHeight,
                             mirrorX = uiState.isFrontCamera,
-                            onRegisterClick = viewModel::requestEnroll,
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
-                }
-            }
 
-            when (uiState.enrollPhase) {
-                EnrollPhase.AlignEyes -> {
-                    EnrollEyeAlignOverlay(
-                        faces = uiState.faces,
-                        imageWidth = uiState.imageWidth,
-                        imageHeight = uiState.imageHeight,
-                        mirrorX = uiState.isFrontCamera,
-                        eyesAligned = uiState.enrollEyesAligned,
-                        onEyesAlignedChanged = viewModel::updateEyesAligned,
-                        onStart = viewModel::startEnrollScan,
-                        onAbort = viewModel::dismissEnroll,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-
-                EnrollPhase.Scanning -> {
-                    if (uiState.enrollStep != null) {
-                        EnrollGuidanceOverlay(
-                            step = uiState.enrollStep!!,
-                            faces = uiState.faces,
-                            imageWidth = uiState.imageWidth,
-                            imageHeight = uiState.imageHeight,
-                            mirrorX = uiState.isFrontCamera,
-                            hint = uiState.enrollHint,
-                            stepProgress = uiState.enrollStepProgress,
-                            stepTarget = uiState.enrollStepTarget,
-                            overallProgress = uiState.enrollProgress,
-                            overallTarget = uiState.enrollTargetCount,
-                            poseAligned = uiState.enrollPoseAligned,
-                            yawProgress = uiState.enrollYawProgress,
-                            onGuideAlignedChanged = viewModel::updateGuideAligned,
-                            onAbort = viewModel::dismissEnroll,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    }
-                }
-
-                EnrollPhase.ReadyToTest -> {
-                    EnrollReadyToTestOverlay(
-                        onTestScan = viewModel::startTestScan,
-                        onAbort = viewModel::dismissEnroll,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-
-                EnrollPhase.Testing -> {
-                    uiState.enrollTestStep?.let { step ->
-                        EnrollTestScanOverlay(
-                            step = step,
-                            faces = uiState.faces,
-                            imageWidth = uiState.imageWidth,
-                            imageHeight = uiState.imageHeight,
-                            mirrorX = uiState.isFrontCamera,
-                            hint = uiState.enrollHint,
-                            progress = uiState.enrollTestProgress,
-                            target = uiState.enrollTestTarget,
-                            poseAligned = uiState.enrollPoseAligned,
-                            onGuideAlignedChanged = viewModel::updateGuideAligned,
-                            onAbort = viewModel::dismissEnroll,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    }
-                }
-
-                else -> Unit
-            }
-
-            Column(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .statusBarsPadding()
-                    .padding(top = 12.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                val hideSwitcher = uiState.enrollPhase == EnrollPhase.Scanning ||
-                    uiState.enrollPhase == EnrollPhase.AlignEyes ||
-                    uiState.enrollPhase == EnrollPhase.Testing
-                if (!hideSwitcher) {
-                    ModeSwitcher(
-                        mode = uiState.mode,
-                        onModeChange = viewModel::setMode,
-                    )
-                }
-
-                if (uiState.mode == CameraMode.Recognition) {
-                    Surface(
-                        modifier = Modifier.padding(top = 4.dp),
-                        color = Color.Black.copy(alpha = 0.55f),
-                        shape = MaterialTheme.shapes.medium,
-                    ) {
-                        Text(
-                            text = "Faces: ${uiState.faceCount}",
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                            color = Color.White,
-                            style = MaterialTheme.typography.titleMedium,
-                        )
-                    }
-                }
-            }
-
-            FloatingActionButton(
-                onClick = { binder.switchCamera() },
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(24.dp),
-            ) {
-                Icon(Icons.Default.Cameraswitch, contentDescription = "Switch camera")
-            }
-
-            FloatingActionButton(
-                onClick = {
-                    if (!binder.toggleTorch()) {
-                        scope.launch {
-                            snackbarHostState.showSnackbar("Torch is not available on this camera")
+                    CameraMode.Register -> {
+                        if (uiState.enrollPhase == EnrollPhase.Idle) {
+                            RegisterOverlay(
+                                faces = uiState.faces,
+                                imageWidth = uiState.imageWidth,
+                                imageHeight = uiState.imageHeight,
+                                mirrorX = uiState.isFrontCamera,
+                                onRegisterClick = viewModel::requestEnroll,
+                                modifier = Modifier.fillMaxSize(),
+                            )
                         }
                     }
-                },
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(24.dp),
-            ) {
-                Icon(
-                    imageVector = if (uiState.isTorchOn) {
-                        Icons.Default.FlashOn
-                    } else {
-                        Icons.Default.FlashOff
+                }
+
+                when (uiState.enrollPhase) {
+                    EnrollPhase.AlignEyes -> {
+                        EnrollEyeAlignOverlay(
+                            faces = uiState.faces,
+                            imageWidth = uiState.imageWidth,
+                            imageHeight = uiState.imageHeight,
+                            mirrorX = uiState.isFrontCamera,
+                            eyesAligned = uiState.enrollEyesAligned,
+                            onEyesAlignedChanged = viewModel::updateEyesAligned,
+                            onStart = viewModel::startEnrollScan,
+                            onAbort = viewModel::dismissEnroll,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+
+                    EnrollPhase.Scanning -> {
+                        if (uiState.enrollStep != null) {
+                            EnrollGuidanceOverlay(
+                                step = uiState.enrollStep!!,
+                                faces = uiState.faces,
+                                imageWidth = uiState.imageWidth,
+                                imageHeight = uiState.imageHeight,
+                                mirrorX = uiState.isFrontCamera,
+                                hint = uiState.enrollHint,
+                                stepProgress = uiState.enrollStepProgress,
+                                stepTarget = uiState.enrollStepTarget,
+                                overallProgress = uiState.enrollProgress,
+                                overallTarget = uiState.enrollTargetCount,
+                                poseAligned = uiState.enrollPoseAligned,
+                                yawProgress = uiState.enrollYawProgress,
+                                onGuideAlignedChanged = viewModel::updateGuideAligned,
+                                onAbort = viewModel::dismissEnroll,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
+                    }
+
+                    EnrollPhase.ReadyToTest -> {
+                        EnrollReadyToTestOverlay(
+                            onTestScan = viewModel::startTestScan,
+                            onAbort = viewModel::dismissEnroll,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+
+                    EnrollPhase.Testing -> {
+                        uiState.enrollTestStep?.let { step ->
+                            EnrollTestScanOverlay(
+                                step = step,
+                                faces = uiState.faces,
+                                imageWidth = uiState.imageWidth,
+                                imageHeight = uiState.imageHeight,
+                                mirrorX = uiState.isFrontCamera,
+                                hint = uiState.enrollHint,
+                                progress = uiState.enrollTestProgress,
+                                target = uiState.enrollTestTarget,
+                                poseAligned = uiState.enrollPoseAligned,
+                                onGuideAlignedChanged = viewModel::updateGuideAligned,
+                                onAbort = viewModel::dismissEnroll,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
+                    }
+
+                    else -> Unit
+                }
+
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .statusBarsPadding()
+                        .padding(top = 12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    val hideSwitcher = uiState.enrollPhase == EnrollPhase.Scanning ||
+                        uiState.enrollPhase == EnrollPhase.AlignEyes ||
+                        uiState.enrollPhase == EnrollPhase.Testing
+                    if (!hideSwitcher) {
+                        ModeSwitcher(
+                            mode = uiState.mode,
+                            onModeChange = viewModel::setMode,
+                        )
+                    }
+
+                    if (uiState.mode == CameraMode.Recognition) {
+                        Surface(
+                            modifier = Modifier.padding(top = 4.dp),
+                            color = Color.Black.copy(alpha = 0.55f),
+                            shape = MaterialTheme.shapes.medium,
+                        ) {
+                            Text(
+                                text = "Faces: ${uiState.faceCount}",
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                color = Color.White,
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                        }
+                    }
+                }
+
+                FloatingActionButton(
+                    onClick = { binder.switchCamera() },
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(24.dp),
+                ) {
+                    Icon(Icons.Default.Cameraswitch, contentDescription = "Switch camera")
+                }
+
+                FloatingActionButton(
+                    onClick = {
+                        if (!binder.toggleTorch()) {
+                            scope.launch {
+                                snackbarHostState.showSnackbar("Torch is not available on this camera")
+                            }
+                        }
                     },
-                    contentDescription = "Toggle torch",
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(24.dp),
+                ) {
+                    Icon(
+                        imageVector = if (uiState.isTorchOn) {
+                            Icons.Default.FlashOn
+                        } else {
+                            Icons.Default.FlashOff
+                        },
+                        contentDescription = "Toggle torch",
+                    )
+                }
+            } else {
+                EnginePrepOverlay(
+                    progress = uiState.modelDownloadProgress,
+                    label = uiState.errorMessage ?: uiState.modelDownloadLabel,
+                    fileIndex = uiState.modelDownloadFileIndex,
+                    totalFiles = uiState.modelDownloadTotalFiles,
+                    failed = !uiState.isPreparingEngine && !uiState.engineReady,
+                    onRetry = viewModel::retryPrepareEngine,
+                    modifier = Modifier.fillMaxSize(),
                 )
             }
         }
     }
 
-    when (uiState.enrollPhase) {
-        EnrollPhase.QualityReview -> {
-            val grade = uiState.enrollQualityGrade ?: EnrollQualityGrade.Bad
-            EnrollQualityDialog(
-                grade = grade,
-                scorePercent = (uiState.enrollQualityScore * 100f).toInt().coerceIn(0, 100),
-                onScanAgain = viewModel::retryEnrollScan,
-                onContinueExcellent = viewModel::proceedToEnterDetails,
-                onDismiss = viewModel::dismissEnroll,
-            )
-        }
+    if (uiState.engineReady) {
+        when (uiState.enrollPhase) {
+            EnrollPhase.QualityReview -> {
+                val grade = uiState.enrollQualityGrade ?: EnrollQualityGrade.Bad
+                EnrollQualityDialog(
+                    grade = grade,
+                    scorePercent = (uiState.enrollQualityScore * 100f).toInt().coerceIn(0, 100),
+                    onScanAgain = viewModel::retryEnrollScan,
+                    onContinueExcellent = viewModel::proceedToEnterDetails,
+                    onDismiss = viewModel::dismissEnroll,
+                )
+            }
 
-        EnrollPhase.EnterDetails -> {
-            EnrollDetailsDialog(
-                onDismiss = viewModel::dismissEnroll,
-                onSave = viewModel::saveEnroll,
-            )
-        }
+            EnrollPhase.EnterDetails -> {
+                EnrollDetailsDialog(
+                    onDismiss = viewModel::dismissEnroll,
+                    onSave = viewModel::saveEnroll,
+                )
+            }
 
-        EnrollPhase.Idle,
-        EnrollPhase.AlignEyes,
-        EnrollPhase.Scanning,
-        EnrollPhase.ReadyToTest,
-        EnrollPhase.Testing,
-        -> Unit
+            EnrollPhase.Idle,
+            EnrollPhase.AlignEyes,
+            EnrollPhase.Scanning,
+            EnrollPhase.ReadyToTest,
+            EnrollPhase.Testing,
+            -> Unit
+        }
     }
 }
 

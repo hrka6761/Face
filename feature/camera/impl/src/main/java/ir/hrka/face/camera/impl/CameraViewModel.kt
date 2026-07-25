@@ -14,15 +14,12 @@ import ir.hrka.face.detection.api.FaceDetectorFactory
 import ir.hrka.face.detection.api.FaceDetectorOptions
 import ir.hrka.face.domain.EnrollPersonUseCase
 import ir.hrka.face.domain.IdentifyFacesUseCase
+import ir.hrka.face.engine.FaceRecognitionEngine
 import ir.hrka.face.model.DetectedFace
 import ir.hrka.face.model.FaceEmbedding
 import ir.hrka.face.model.FaceLandmarkType
 import ir.hrka.face.model.FaceMatchResult
 import ir.hrka.face.model.Person
-import ir.hrka.face.recognition.api.FaceEmbedder
-import ir.hrka.face.recognition.api.FaceRecognitionConfig
-import ir.hrka.face.recognition.api.FaceRecognitionFactory
-import ir.hrka.face.recognition.internal.ImageConversion
 import android.graphics.PointF
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -40,10 +37,10 @@ import javax.inject.Inject
 /**
  * Orchestrates detection, embedding, identification, and multi-template enrollment.
  *
- * Pipeline (ML Kit–compatible camera path):
- * 1) Detect on YUV [ImageProxy] via `InputImage.fromMediaImage` (keep proxy open)
+ * Pipeline:
+ * 1) Detect on YUV [ImageProxy] via ML Kit (`:core:face_detection`) while proxy is open
  * 2) Publish bounding boxes immediately (overlay must not depend on embedding)
- * 3) Convert a separate upright bitmap for TFLite embed / match / enroll
+ * 3) Convert an upright bitmap and embed / match / enroll via [FaceRecognitionEngine] (ArcFace)
  */
 @HiltViewModel
 class CameraViewModel @Inject constructor(
@@ -61,8 +58,8 @@ class CameraViewModel @Inject constructor(
             enableTracking = true,
         ),
     )
-    private val embedderMutex = Mutex()
-    private var embedder: FaceEmbedder? = null
+    private val engineMutex = Mutex()
+    private var recognitionEngine: FaceRecognitionEngine? = null
     private val frameMutex = Mutex()
     private val isProcessing = AtomicBoolean(false)
 
@@ -84,20 +81,19 @@ class CameraViewModel @Inject constructor(
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
-            runCatching { ensureEmbedder() }
-                .onFailure { error ->
-                    if (error is CancellationException) throw error
-                    _uiState.update {
-                        it.copy(errorMessage = error.message ?: "Failed to load face model")
-                    }
-                }
+            prepareEngine()
         }
     }
 
     /**
      * Processes a camera frame. Always closes [imageProxy].
+     * Frames are ignored until [CameraUiState.engineReady] is true.
      */
     fun processFrame(imageProxy: ImageProxy) {
+        if (!_uiState.value.engineReady) {
+            imageProxy.close()
+            return
+        }
         if (!isProcessing.compareAndSet(false, true)) {
             imageProxy.close()
             return
@@ -128,7 +124,7 @@ class CameraViewModel @Inject constructor(
             rotationDegrees = rotationDegrees,
         )
 
-        // Detect with ML Kit's camera API while ImageProxy is still open.
+        // Detect with ML Kit while ImageProxy is still open.
         val detection = detector.detect(imageProxy)
         when (detection) {
             is FaceDetectionResult.Failure -> {
@@ -177,8 +173,14 @@ class CameraViewModel @Inject constructor(
                     return
                 }
 
+                val engine = runCatching { ensureEngine() }.getOrElse { error ->
+                    Log.e(TAG, "Recognition engine unavailable", error)
+                    return
+                }
+
                 try {
                     recognizeAndPublish(
+                        engine = engine,
                         bitmap = uprightBitmap,
                         faces = detection.faces,
                         imageWidth = detection.imageWidth,
@@ -194,18 +196,14 @@ class CameraViewModel @Inject constructor(
     }
 
     private suspend fun recognizeAndPublish(
+        engine: FaceRecognitionEngine,
         bitmap: Bitmap,
         faces: List<DetectedFace>,
         imageWidth: Int,
         imageHeight: Int,
     ) {
-        val activeEmbedder = runCatching { ensureEmbedder() }.getOrElse { error ->
-            Log.e(TAG, "Embedder unavailable", error)
-            return
-        }
-
         val embeddings = runCatching {
-            activeEmbedder.embedAll(bitmap, faces)
+            embedAll(engine, bitmap, faces)
         }.getOrElse { error ->
             Log.e(TAG, "Embedding failed", error)
             emptyMap()
@@ -223,7 +221,7 @@ class CameraViewModel @Inject constructor(
 
         runCatching {
             maybeCollectEnrollmentSamples(
-                embedder = activeEmbedder,
+                engine = engine,
                 bitmap = bitmap,
                 faces = faces,
                 embeddings = embeddings,
@@ -234,7 +232,7 @@ class CameraViewModel @Inject constructor(
 
         runCatching {
             maybeCollectTestSamples(
-                embedder = activeEmbedder,
+                engine = engine,
                 bitmap = bitmap,
                 faces = faces,
                 embeddings = embeddings,
@@ -304,7 +302,7 @@ class CameraViewModel @Inject constructor(
     }
 
     private suspend fun maybeCollectEnrollmentSamples(
-        embedder: FaceEmbedder,
+        engine: FaceRecognitionEngine,
         bitmap: Bitmap,
         faces: List<DetectedFace>,
         embeddings: Map<Int, FaceEmbedding>,
@@ -338,12 +336,12 @@ class CameraViewModel @Inject constructor(
             it.copy(
                 enrollStep = step,
                 enrollStepProgress = enrollStepCount,
-                enrollStepTarget = FaceRecognitionConfig.ENROLL_SAMPLES_PER_POSE,
+                enrollStepTarget = EnrollConfig.ENROLL_SAMPLES_PER_POSE,
                 enrollHint = hint,
                 enrollPoseAligned = poseOk,
                 enrollYawProgress = progress,
                 enrollProgress = synchronized(enrollSamples) { enrollSamples.size },
-                enrollTargetCount = FaceRecognitionConfig.ENROLL_TARGET_TEMPLATES,
+                enrollTargetCount = EnrollConfig.ENROLL_TARGET_TEMPLATES,
             )
         }
 
@@ -366,7 +364,9 @@ class CameraViewModel @Inject constructor(
         if (now - lastEnrollSampleAtMs < SAMPLE_INTERVAL_MS) return
 
         val robust = withContext(Dispatchers.Default) {
-            runCatching { embedder.embedRobust(bitmap, face) }.getOrNull()
+            runCatching {
+                embedOne(engine, bitmap, face)
+            }.getOrNull()
         } ?: embeddings[face.trackingId] ?: return
 
         lastEnrollSampleAtMs = now
@@ -375,7 +375,7 @@ class CameraViewModel @Inject constructor(
         synchronized(enrollSamples) {
             enrollSamples += robust
             enrollStepCount += 1
-            stepDone = enrollStepCount >= FaceRecognitionConfig.ENROLL_SAMPLES_PER_POSE
+            stepDone = enrollStepCount >= EnrollConfig.ENROLL_SAMPLES_PER_POSE
             if (stepDone) {
                 val next = step.next()
                 if (next != null) {
@@ -399,7 +399,7 @@ class CameraViewModel @Inject constructor(
             it.copy(
                 enrollStep = enrollStep,
                 enrollStepProgress = enrollStepCount,
-                enrollStepTarget = FaceRecognitionConfig.ENROLL_SAMPLES_PER_POSE,
+                enrollStepTarget = EnrollConfig.ENROLL_SAMPLES_PER_POSE,
                 enrollHint = if (allDone) {
                     "Scan complete — checking quality…"
                 } else if (stepDone) {
@@ -410,7 +410,7 @@ class CameraViewModel @Inject constructor(
                 enrollPoseAligned = poseOk,
                 enrollYawProgress = if (allDone) 1f else progress,
                 enrollProgress = synchronized(enrollSamples) { enrollSamples.size },
-                enrollTargetCount = FaceRecognitionConfig.ENROLL_TARGET_TEMPLATES,
+                enrollTargetCount = EnrollConfig.ENROLL_TARGET_TEMPLATES,
             )
         }
 
@@ -421,7 +421,7 @@ class CameraViewModel @Inject constructor(
 
     private fun completeScanAndReviewQuality() {
         val samples = synchronized(enrollSamples) { enrollSamples.toList() }
-        val minRequired = FaceRecognitionConfig.ENROLL_TARGET_TEMPLATES
+        val minRequired = EnrollConfig.ENROLL_TARGET_TEMPLATES
         if (samples.size < minRequired) {
             _uiState.update {
                 it.copy(
@@ -460,7 +460,7 @@ class CameraViewModel @Inject constructor(
     }
 
     private suspend fun maybeCollectTestSamples(
-        embedder: FaceEmbedder,
+        engine: FaceRecognitionEngine,
         bitmap: Bitmap,
         faces: List<DetectedFace>,
         embeddings: Map<Int, FaceEmbedding>,
@@ -506,7 +506,9 @@ class CameraViewModel @Inject constructor(
         if (now - lastTestSampleAtMs < SAMPLE_INTERVAL_MS) return
 
         val robust = withContext(Dispatchers.Default) {
-            runCatching { embedder.embedRobust(bitmap, face) }.getOrNull()
+            runCatching {
+                embedOne(engine, bitmap, face)
+            }.getOrNull()
         } ?: embeddings[face.trackingId] ?: return
 
         lastTestSampleAtMs = now
@@ -576,7 +578,7 @@ class CameraViewModel @Inject constructor(
 
     private suspend fun persistEnrollment(name: String) {
         val samples = synchronized(enrollSamples) { enrollSamples.toList() }
-        if (samples.size < FaceRecognitionConfig.ENROLL_TARGET_TEMPLATES) {
+        if (samples.size < EnrollConfig.ENROLL_TARGET_TEMPLATES) {
             _uiState.update {
                 it.copy(errorMessage = "No scan data to save — please scan again")
             }
@@ -648,10 +650,10 @@ class CameraViewModel @Inject constructor(
                 enrollPhase = EnrollPhase.Scanning,
                 isEnrolling = true,
                 enrollProgress = synchronized(enrollSamples) { enrollSamples.size },
-                enrollTargetCount = FaceRecognitionConfig.ENROLL_TARGET_TEMPLATES,
+                enrollTargetCount = EnrollConfig.ENROLL_TARGET_TEMPLATES,
                 enrollStep = EnrollPoseStep.FIRST,
                 enrollStepProgress = 0,
-                enrollStepTarget = FaceRecognitionConfig.ENROLL_SAMPLES_PER_POSE,
+                enrollStepTarget = EnrollConfig.ENROLL_SAMPLES_PER_POSE,
                 enrollHint = EnrollPoseStep.FIRST.instruction,
                 enrollPoseAligned = false,
                 enrollYawProgress = 0f,
@@ -688,14 +690,105 @@ class CameraViewModel @Inject constructor(
         }
     }
 
-    private suspend fun ensureEmbedder(): FaceEmbedder {
-        embedder?.let { return it }
-        return embedderMutex.withLock {
-            embedder?.let { return it }
+    private suspend fun prepareEngine() {
+        _uiState.update {
+            it.copy(
+                isPreparingEngine = true,
+                engineReady = false,
+                modelDownloadProgress = -1f,
+                modelDownloadLabel = "Checking face models…",
+                modelDownloadFileIndex = 0,
+                modelDownloadTotalFiles = 0,
+            )
+        }
+        runCatching { ensureEngine() }
+            .onSuccess {
+                _uiState.update { state ->
+                    state.copy(
+                        isPreparingEngine = false,
+                        engineReady = true,
+                        modelDownloadProgress = 1f,
+                        modelDownloadLabel = "Face engine ready",
+                        errorMessage = null,
+                    )
+                }
+            }
+            .onFailure { error ->
+                if (error is CancellationException) throw error
+                Log.e(TAG, "Failed to prepare face engine", error)
+                _uiState.update {
+                    it.copy(
+                        isPreparingEngine = false,
+                        engineReady = false,
+                        modelDownloadProgress = 0f,
+                        modelDownloadLabel = "Face engine unavailable",
+                        errorMessage = error.message
+                            ?: "Failed to download or load face models",
+                    )
+                }
+            }
+    }
+
+    private suspend fun ensureEngine(): FaceRecognitionEngine {
+        recognitionEngine?.let { return it }
+        return engineMutex.withLock {
+            recognitionEngine?.let { return it }
             withContext(Dispatchers.IO) {
-                FaceRecognitionFactory.createEmbedder(appContext).also { embedder = it }
+                val paths = FaceModelStore.ensureModelPaths(appContext) { progress ->
+                    _uiState.update { state ->
+                        state.copy(
+                            isPreparingEngine = true,
+                            engineReady = false,
+                            modelDownloadProgress = progress.overallProgress,
+                            modelDownloadLabel = progress.label,
+                            modelDownloadFileIndex = progress.currentFileIndex,
+                            modelDownloadTotalFiles = progress.totalFiles,
+                        )
+                    }
+                }
+                _uiState.update { state ->
+                    state.copy(
+                        modelDownloadProgress = -1f,
+                        modelDownloadLabel = "Starting face engine…",
+                    )
+                }
+                FaceRecognitionEngine.create(appContext, paths).also {
+                    recognitionEngine = it
+                }
             }
         }
+    }
+
+    /** Retries model download / engine creation after a failure. */
+    fun retryPrepareEngine() {
+        if (_uiState.value.isPreparingEngine || _uiState.value.engineReady) return
+        viewModelScope.launch(Dispatchers.IO) {
+            prepareEngine()
+        }
+    }
+
+    private suspend fun embedOne(
+        engine: FaceRecognitionEngine,
+        bitmap: Bitmap,
+        face: DetectedFace,
+    ): FaceEmbedding? {
+        val engineFace = EngineFaceMapper.toEngineFace(face) ?: return null
+        return runCatching {
+            EngineFaceMapper.toDomainEmbedding(engine.embed(bitmap, engineFace))
+        }.getOrNull()
+    }
+
+    private suspend fun embedAll(
+        engine: FaceRecognitionEngine,
+        bitmap: Bitmap,
+        faces: List<DetectedFace>,
+    ): Map<Int, FaceEmbedding> {
+        val out = LinkedHashMap<Int, FaceEmbedding>(faces.size)
+        for (face in faces) {
+            val embedding = embedOne(engine, bitmap, face) ?: continue
+            out[face.trackingId] = embedding
+        }
+        return out
     }
 
     /**
@@ -748,7 +841,7 @@ class CameraViewModel @Inject constructor(
                 enrollPhase = EnrollPhase.AlignEyes,
                 isEnrolling = false,
                 enrollProgress = 0,
-                enrollTargetCount = FaceRecognitionConfig.ENROLL_TARGET_TEMPLATES,
+                enrollTargetCount = EnrollConfig.ENROLL_TARGET_TEMPLATES,
                 enrollStep = null,
                 enrollStepProgress = 0,
                 enrollHint = "Place each eye inside its circle, then press Start.",
@@ -849,7 +942,7 @@ class CameraViewModel @Inject constructor(
      */
     fun startTestScan() {
         if (_uiState.value.enrollPhase != EnrollPhase.ReadyToTest) return
-        if (synchronized(enrollSamples) { enrollSamples.size } < FaceRecognitionConfig.ENROLL_TARGET_TEMPLATES) {
+        if (synchronized(enrollSamples) { enrollSamples.size } < EnrollConfig.ENROLL_TARGET_TEMPLATES) {
             _uiState.update { it.copy(errorMessage = "Enrollment scan incomplete — scan again first") }
             return
         }
@@ -905,8 +998,8 @@ class CameraViewModel @Inject constructor(
 
     override fun onCleared() {
         detector.close()
-        embedder?.close()
-        embedder = null
+        recognitionEngine?.close()
+        recognitionEngine = null
         voiceGuide.release()
         clearEnrollmentSession(keepSamples = false)
         super.onCleared()
@@ -925,3 +1018,4 @@ private fun FaceDetectionResult.Failure.isCancellationMessage(): Boolean {
     return text.contains("Task was cancelled", ignoreCase = true) ||
         text.contains("Job was cancelled", ignoreCase = true)
 }
+

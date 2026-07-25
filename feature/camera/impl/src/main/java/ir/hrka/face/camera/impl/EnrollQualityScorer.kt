@@ -1,7 +1,6 @@
 package ir.hrka.face.camera.impl
 
 import ir.hrka.face.model.FaceEmbedding
-import ir.hrka.face.recognition.api.FaceRecognitionConfig
 import kotlin.math.sqrt
 
 /**
@@ -25,9 +24,9 @@ object EnrollQualityScorer {
      */
     fun evaluate(
         samples: List<FaceEmbedding>,
-        perPose: Int = FaceRecognitionConfig.ENROLL_SAMPLES_PER_POSE,
+        perPose: Int = EnrollConfig.ENROLL_SAMPLES_PER_POSE,
     ): Pair<Float, EnrollQualityGrade> {
-        if (samples.size < perPose * FaceRecognitionConfig.ENROLL_POSE_STEPS) {
+        if (samples.size < perPose * EnrollConfig.ENROLL_POSE_STEPS) {
             return 0f to EnrollQualityGrade.Bad
         }
 

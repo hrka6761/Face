@@ -25,6 +25,8 @@ dependencies {
     implementation(projects.core.navigation)
     implementation(projects.core.domain)
     implementation(projects.core.database)
+    implementation(projects.core.downloadManager)
+    implementation(libs.androidx.work.runtime.ktx)
 
     implementation(projects.feature.splash.api)
     implementation(projects.feature.splash.impl)

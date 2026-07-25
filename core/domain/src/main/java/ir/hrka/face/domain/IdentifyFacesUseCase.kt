@@ -93,14 +93,14 @@ class IdentifyFacesUseCase @Inject constructor(
 
     companion object {
         /**
-         * Cosine threshold for multi-pose MobileFaceNet galleries.
-         * Keep in sync with [ir.hrka.face.recognition.api.FaceRecognitionConfig.DEFAULT_MATCH_THRESHOLD].
+         * Cosine threshold for ArcFace (buffalo_l / w600k_r50) galleries.
+         * Keep in sync with [ir.hrka.face.engine.EngineConfig.DEFAULT_MATCH_THRESHOLD].
          */
-        const val DEFAULT_THRESHOLD: Float = 0.68f
+        const val DEFAULT_THRESHOLD: Float = 0.42f
 
         /**
          * Best-vs-second-best margin to reject ambiguous identities.
-         * Keep in sync with [ir.hrka.face.recognition.api.FaceRecognitionConfig.DEFAULT_MATCH_MARGIN].
+         * Keep in sync with [ir.hrka.face.engine.EngineConfig.DEFAULT_MATCH_MARGIN].
          */
         const val DEFAULT_MARGIN: Float = 0.08f
     }

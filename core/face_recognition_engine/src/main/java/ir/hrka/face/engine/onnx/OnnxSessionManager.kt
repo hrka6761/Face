@@ -36,9 +36,11 @@ internal class OnnxSessionManager(
     /** Returns the SCRFD detector session, creating it on first use. */
     fun detectorSession(): OrtSession = synchronized(lock) {
         ensureOpen()
-        detectorSession ?: createSession(modelPaths.detectorModelPath).also {
-            detectorSession = it
-        }
+        val path = modelPaths.detectorModelPath
+            ?: throw FaceEngineException.ModelNotFoundException(
+                "(no detector model path configured)",
+            )
+        detectorSession ?: createSession(path).also { detectorSession = it }
     }
 
     /** Returns the ArcFace embedding session, creating it on first use. */

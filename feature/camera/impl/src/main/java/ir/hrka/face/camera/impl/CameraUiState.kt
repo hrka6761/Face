@@ -38,6 +38,19 @@ data class CameraUiState(
     val imageHeight: Int = 0,
     val isFrontCamera: Boolean = false,
     val isTorchOn: Boolean = false,
+    /**
+     * `true` when ONNX models are on disk and [ir.hrka.face.engine.FaceRecognitionEngine]
+     * has been created. Camera preview/analysis stays off until this is true.
+     */
+    val engineReady: Boolean = false,
+    /** `true` while downloading models or creating the engine. */
+    val isPreparingEngine: Boolean = true,
+    /** Overall model-download / prepare progress (`0..1`, or `-1` indeterminate). */
+    val modelDownloadProgress: Float = -1f,
+    /** Status text shown above the prepare progress bar. */
+    val modelDownloadLabel: String = "Preparing face engine…",
+    val modelDownloadFileIndex: Int = 0,
+    val modelDownloadTotalFiles: Int = 0,
     val errorMessage: String? = null,
     val enrollTarget: TrackedFaceUi? = null,
     val enrollPhase: EnrollPhase = EnrollPhase.Idle,

@@ -9,8 +9,8 @@ and passes absolute file paths into the engine.
 
 ```kotlin
 val models = ModelPaths(
-    detectorModelPath = File(filesDir, "models/scrfd_10g_kps.onnx").absolutePath,
     embeddingModelPath = File(filesDir, "models/arcface_w600k_r50.onnx").absolutePath,
+    // detectorModelPath optional — omit when detection is done elsewhere (e.g. ML Kit)
 )
 
 val engine = FaceRecognitionEngine.create(context, models)

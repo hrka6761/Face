@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import ir.hrka.face.engine.alignment.FaceAligner
 import ir.hrka.face.engine.detection.FaceDetector
 import ir.hrka.face.engine.detection.Scrfd10GFaceDetector
+import ir.hrka.face.engine.detection.UnavailableFaceDetector
 import ir.hrka.face.engine.embedding.ArcFaceW600kR50Embedder
 import ir.hrka.face.engine.embedding.FaceEmbedder
 import ir.hrka.face.engine.model.DetectedFace
@@ -25,8 +26,8 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Typical usage:
  * ```
  * val models = ModelPaths(
- *     detectorModelPath = "/data/.../scrfd_10g_kps.onnx",
  *     embeddingModelPath = "/data/.../arcface_w600k_r50.onnx",
+ *     detectorModelPath = "/data/.../scrfd_10g_kps.onnx", // optional
  * )
  * val engine = FaceRecognitionEngine.create(context, models)
  * try {
@@ -159,13 +160,14 @@ class FaceRecognitionEngine private constructor(
         /**
          * Creates an engine that loads ONNX models from [models] on device storage.
          *
-         * Paths are validated immediately (files must exist and be readable).
-         * ONNX sessions are created lazily on first inference.
+         * [ModelPaths.embeddingModelPath] is always required.
+         * [ModelPaths.detectorModelPath] is optional — omit it when detection is done
+         * elsewhere (e.g. ML Kit). Calling [detectFaces] without a detector path fails.
          *
          * @param context Any context; application context is retained.
-         * @param models Absolute paths to detector + embedding ONNX files.
+         * @param models Absolute paths to ONNX files.
          * @param config Optional thresholds / threads.
-         * @throws FaceEngineException.ModelNotFoundException if a model file is missing.
+         * @throws FaceEngineException.ModelNotFoundException if a required model file is missing.
          */
         @JvmStatic
         @JvmOverloads
@@ -175,16 +177,20 @@ class FaceRecognitionEngine private constructor(
             config: EngineConfig = EngineConfig(),
         ): FaceRecognitionEngine {
             val modelLoader = OnnxModelLoader()
-            // Fail fast if paths are wrong — don't wait until first camera frame.
-            modelLoader.requireModelFile(models.detectorModelPath)
             modelLoader.requireModelFile(models.embeddingModelPath)
+            models.detectorModelPath?.let(modelLoader::requireModelFile)
 
             val sessionManager = OnnxSessionManager(modelLoader, models, config)
+            val detector: FaceDetector = if (models.detectorModelPath != null) {
+                Scrfd10GFaceDetector(sessionManager, config)
+            } else {
+                UnavailableFaceDetector()
+            }
             return FaceRecognitionEngine(
                 config = config,
                 modelPaths = models,
                 sessionManager = sessionManager,
-                detector = Scrfd10GFaceDetector(sessionManager, config),
+                detector = detector,
                 aligner = FaceAligner(EngineConfig.ALIGNED_FACE_SIZE),
                 embedder = ArcFaceW600kR50Embedder(sessionManager),
                 recognizer = FaceRecognizer(config),

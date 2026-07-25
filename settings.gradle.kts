@@ -29,8 +29,8 @@ include(":core:domain")
 include(":core:database")
 include(":core:face_detection")
 include(":core:face_recognition")
-
 include(":core:face_recognition_engine")
+include(":core:download_manager")
 
 include(":feature:splash:api")
 include(":feature:splash:impl")

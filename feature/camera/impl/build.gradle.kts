@@ -14,7 +14,8 @@ dependencies {
     implementation(projects.feature.camera.api)
     implementation(projects.core.domain)
     implementation(projects.core.faceDetection)
-    implementation(projects.core.faceRecognition)
+    implementation(projects.core.faceRecognitionEngine)
+    implementation(projects.core.downloadManager)
 
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.camera.core)
